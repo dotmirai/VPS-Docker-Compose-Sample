@@ -733,7 +733,7 @@ services:
   dramatiq-worker:
     image: mhdzumair/mediafusion:latest
     container_name: dramatiq-worker
-    command: ["run", "dramatiq", "api.task", "-p", "1", "-t", "4"]
+    command: ["dramatiq", "api.task", "-p", "1", "-t", "4"]
     env_file: 
       - .env.mediafusion
     restart: unless-stopped
