@@ -3,7 +3,10 @@
 #The services are deployed using Docker and Docker Compose. The services are deployed using Traefik as a reverse proxy, and all services are exposed using HTTPS.
 #You Must replace all the variables with your own values, in order to use this file, which will be stored and defined in a .env file, unless otherwise stated. 
 #There are a few extra services that are not related or required, like Minecraft, Gluetun, and Adguard, which are commented out.
+
+#This originally started out as a fork and similar project to Viren070's compose file, but has since been heavily modified and expanded upon.
 # ==============================================================STREMIO ADDONS====================================================================
+#This section is for services that are used to provide content to Stremio. They will be will be accessible through Stremio directly as addons. 
 services:
   # AIOStreams service will allow you to consolidate, manage, and reorder stream results from multiple addons.
   aiostreams:
@@ -46,6 +49,7 @@ services:
       retries: 5
       start_period: 10s
 
+# TMDB Addon is a service that will provide metadata for movies and TV shows on Stremio.
   tmdb-addon:
     image: mrcanelas/tmdb-addon:latest
     container_name: tmdb-addon
@@ -70,15 +74,11 @@ services:
       - "flame.type=app"
       - "flame.name=TMDB Addon"
       - "flame.url=https://${TMDB_ADDON_HOSTNAME}"
-      - homepage.group=Addon
-      - homepage.name=TMDb Addon
-      - homepage.href=https://${TMDB_ADDON_HOSTNAME}
-      - homepage.icon=https://miro.medium.com/v2/resize:fit:512/1*UaUZmFbQmQ4ZstvGQ-JFeA.png
-      - homepage.description=The TMDb Addon is a Stremio Addon that provides metadata for movies and TV shows.
     depends_on:
       mongodb:
         condition: service_healthy
 
+# EasyNews+ is a service that will provide access to Easynews' Usenet service, and allow you to stream them from Stremio.
   easynews-plus:
     image: ghcr.io/sleeyax/stremio-easynews-addon:latest
     container_name: easynews-plus
@@ -93,11 +93,8 @@ services:
       - "flame.type=app"
       - "flame.name=Easynews+"
       - "flame.url=https://${EASYNEWS_PLUS_HOSTNAME}"
-      - homepage.group=Addon
-      - homepage.name=easynews+
-      - homepage.href=https://${EASYNEWS_PLUS_HOSTNAME}
-      - homepage.icon=https://pbs.twimg.com/profile_images/479627852757733376/8v9zH7Yo_400x400.jpeg
-      - homepage.description=Easynews+ is a Stremio Addon that provides access to Easynews' Usenet service.
+
+# Comet is an addon that will search your indexer manager for torrents and stream them to Stremio via your Debrid account.
   comet:
     container_name: comet
     image: g0ldyy/comet
@@ -140,11 +137,6 @@ services:
       - "flame.type=app"
       - "flame.name=Comet"
       - "flame.url=https://${COMET_HOSTNAME}"
-      - homepage.group=Addon
-      - homepage.name=Comet
-      - homepage.href=https://${COMET_HOSTNAME}
-      - homepage.icon=https://raw.githubusercontent.com/g0ldyy/comet/main/assets/logo.png
-      - homepage.description=Comet is a Stremio Addon that provides a unified interface to multiple torrent indexers.
     volumes:
       - ./data/comet:/app/data
     healthcheck: 
@@ -154,7 +146,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # MediaFusion
+  # MediaFusion is a streaming addon that will scrape results from multiple sources and provide them to your stremio account. 
   mediafusion:
     image: mhdzumair/mediafusion:latest
     container_name: mediafusion
@@ -183,14 +175,16 @@ services:
       - "flame.name=MediaFusion"
       - "flame.url=https://${MEDIAFUSION_HOSTNAME}"
 
+# Dramatiq is a task queue that will allow you to run tasks in the background. It is used by MediaFusion to scrape sources.
   dramatiq-worker:
     image: mhdzumair/mediafusion:latest
     container_name: dramatiq-worker
     command: ["dramatiq", "api.task", "-p", "1", "-t", "4"]
     env_file: 
-      - .env.mediafusion
+      - .env.mediafusion #This is the same .env file as the mediafusion service. They *must* be the same.
     restart: unless-stopped
 
+# Browserless is a headless browser that will allow you to scrape websites that require JavaScript to be rendered. It is used by MediaFusion to scrape sources.
   browserless:
     image: ghcr.io/browserless/chromium
     container_name: browserless
@@ -202,7 +196,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-  
+
+# Stremio-Jackett is a service that will allow you to search Jackett requests through Stremio, and then pass them on to your Debrid Service.
   stremio-jackett:
     image: belmeg/stremio-addon-jackett
     container_name: stremio-jackett
@@ -244,6 +239,8 @@ services:
       - "flame.url=https://${JACKETTIO_HOSTNAME}"
 
 #==============================================================STREMIO & DEBRID UTILITIES====================================================================
+#This section is for services that are used to manage and monitor Stremio and Debrid services. They won't directly serve content to Stremio, but will help manage and monitor the services that do.
+
 #Stremthru is a service that will allow you to wrap other addons, check debrid cache status, and allow you to proxy addons if required. It will run at http://stremthru:8080
   stremthru:
     image: muniftanjim/stremthru:latest-heavy
