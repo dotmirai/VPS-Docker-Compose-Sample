@@ -604,16 +604,18 @@ services:
     restart: unless-stopped
     ports:
       - 443:443
-      # - 80:80  # adguard
+      #- 80:80  # adguard/minecraft
       - 127.0.0.1:8080:8080
       # - 853:853/tcp  # adguard
+      #- 25565:25565/tcp  # Minecraft server port
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      # - "--entryPoints.web.address=:80"  # adguard
+      #- "--entryPoints.web.address=:80"  # adguard
       - "--entryPoints.websecure.address=:443"
       # - "--entryPoints.dot.address=:853"  # adguard
+      #- "--entrypoints.minecraft.address=:25565"  # Minecraft entry point
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
@@ -731,7 +733,7 @@ services:
   dramatiq-worker:
     image: mhdzumair/mediafusion:latest
     container_name: dramatiq-worker
-    command: ["pipenv", "run", "dramatiq", "api.task", "-p", "1", "-t", "4"]
+    command: ["run", "dramatiq", "api.task", "-p", "1", "-t", "4"]
     env_file: 
       - .env.mediafusion
     restart: unless-stopped
@@ -748,37 +750,35 @@ services:
       timeout: 10s
       retries: 3
 
-  mc:
-    image: itzg/minecraft-server:latest
-    container_name: minecraft
-    tty: true
-    stdin_open: true
-    ports:
-      - "25565:25565"
-    environment:
-      EULA: "TRUE"
-      MEMORY: "4G"
-      MAX_PLAYERS: "10"
-      ICON: ${MINECRAFT_ICON}
-      OVERRIDE_ICON: "true"
-      TZ: ${TZ:-"America/New_York"}
-      DIFFICULTY: "2"
-      FORCE_GAMEMODE: "true"
-      LEVEL_TYPE: "amplified"
-      SPAWN_PROTECTION: "1"
-      ENABLE_WHITELIST: "true"
-      ENABLE_ROLLING_LOGS: "true"
-      LOG_TIMESTAMP: "true"
-    volumes:
-      - "./data/minecraft:/data"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.minecraft.rule=Host(`${MINECRAFT_HOSTNAME}`)"
-      - "traefik.http.routers.minecraft.entrypoints=websecure"
-      - "traefik.http.routers.minecraft.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=minecraft"
-      - "flame.url=https://${MINECRAFT_HOSTNAME}"
+  # minecraft:
+  #   image: itzg/minecraft-server:latest
+  #   container_name: minecraft
+  #   tty: true
+  #   stdin_open: true
+  #   ports:
+  #     - "25565:25565"
+  #   environment:
+  #     EULA: "TRUE"
+  #     MEMORY: "4G"
+  #     MAX_PLAYERS: "10"
+  #     ICON: ${MINECRAFT_ICON}
+  #     OVERRIDE_ICON: "true"
+  #     TZ: ${TZ:-"America/New_York"}
+  #     DIFFICULTY: "2"
+  #     FORCE_GAMEMODE: "true"
+  #     LEVEL_TYPE: "amplified"
+  #     SPAWN_PROTECTION: "1"
+  #     ENABLE_WHITELIST: "true"
+  #     ENABLE_ROLLING_LOGS: "true"
+  #     LOG_TIMESTAMP: "true"
+  #   volumes:
+  #     - "./data/minecraft:/data"
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.tcp.routers.minecraft.rule=HostSNI(`${MINECRAFT_HOSTNAME}`)"
+  #     - "traefik.http.routers.minecraft.entrypoints=minecraft"
+  #     - "traefik.http.routers.minecraft.tls.certresolver=myresolver"
+  #     - "traefik.http.services.minecraft.loadbalancer.server.port=25565"  # Minecraft container port
 
 volumes:
   zilean-tmp:
