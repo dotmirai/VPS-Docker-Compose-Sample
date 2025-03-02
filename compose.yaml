@@ -202,6 +202,26 @@ services:
       - "flame.name=MediaFusion"
       - "flame.url=https://${MEDIAFUSION_HOSTNAME}"
 
+  dramatiq-worker:
+    image: mhdzumair/mediafusion:latest
+    container_name: dramatiq-worker
+    command: ["dramatiq", "api.task", "-p", "1", "-t", "4"]
+    env_file: 
+      - .env.mediafusion
+    restart: unless-stopped
+
+  browserless:
+    image: ghcr.io/browserless/chromium
+    container_name: browserless
+    environment:
+      - TIMEOUT=-1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   stremthru:
     image: muniftanjim/stremthru:latest-heavy
     container_name: stremthru
@@ -366,6 +386,22 @@ services:
       - "flame.name=NZBHydra2"
       - "flame.url=https://${NZBHYDRA2_HOSTNAME}"
 
+#Byparr is a service that can be used to bypass Cloudflare's anti-bot protection. It's a drop in replacement for flaresolverr. It will run at http://byaprr:8191
+  byparr:
+    image: ghcr.io/thephaseless/byparr:main
+    container_name: byparr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data/byparr/screenshots:/app/screenshots # For screenshots when exception occurs
+    healthcheck:
+      test: "curl -f http://localhost:8191/health"
+      interval: 3600s
+      timeout: 10s
+      retries: 3
+
+#Flaresolverr is a service that can be used to bypass Cloudflare's anti-bot protection. Only use it if Byparr is non-functional. 
   # flaresolverr:
   #   image: ghcr.io/flaresolverr/flaresolverr:latest
   #   container_name: flaresolverr
@@ -376,7 +412,7 @@ services:
   #     timeout: 10s
   #     retries: 3
 
-  # Warp for SOCKS5 proxy for AIOStreams, MediaFlow Proxy, and Prowlarr, MediaFusion
+  # Warp for SOCKS5 proxy for AIOStreams, MediaFlow Proxy, Prowlarr, MediaFusion, and anything that cannot be exposed to the VPS's IP address. 
   warp:
     image: caomingjun/warp
     container_name: warp
@@ -400,39 +436,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-
-  # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
-  # Guides for other VPN providers are available at https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/
-  # gluetun:
-  #    image: qmcgaw/gluetun
-  #    container_name: gluetun
-  #    restart: unless-stopped
-  #    cap_add:
-  #      - NET_ADMIN
-  #    devices:
-  #      - /dev/net/tun:/dev/net/tun
-  #    ports:
-  #      - 127.0.0.1:8888:8888/tcp # HTTP proxy
-  #    environment:
-  #      - VPN_SERVICE_PROVIDER=protonvpn
-  #      - VPN_TYPE=wireguard
-  #      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-  #      - SERVER_COUNTRIES=Netherlands
-  #      - FREE_ONLY=true
-  #      # Server list updater
-  #      # See https://github.com/qdm12/gluetun-wiki/blob/main/setup/servers.md#update-the-vpn-servers-list
-  #      - UPDATER_PERIOD=24h
-  #      - HTTPPROXY=on
-  #      - HTTPPROXY_LISTENING_ADDRESS=:8888
-  #      - HTTPPROXY_STEALTH=on
-  #    volumes:
-  #      - gluetun-data:/gluetun
-  #    healthcheck:
-  #      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
-  #      interval: 60s
-  #      timeout: 5s
-  #      retries: 3
-  #      start_period: 1m
       
   mongodb: 
     image: mongo:latest
@@ -465,6 +468,7 @@ services:
       timeout: 5s
       retries: 5
 
+# Redis is a key-value store that is used by by multiple containers. It can be run standalone or alongside Garnet. 
   redis: 
     image: redis:latest
     container_name: redis
@@ -477,11 +481,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+#Garnet is a Redis server that is used as a drop-in replacement for the default Redis server. It is used by Stremthru, and optionally by MediaFusion.
   garnet:
     image: 'ghcr.io/microsoft/garnet'
     container_name: garnet
-    #hostname: redis
-    # command:
+    #hostname: redis # Use this if you want to use the hostname "redis" for the container and completely run without Redis.
+    # command: # These are required if you want to run without Redis.
     #   - --lua
     #   - --lua-transaction-mode
     ulimits:
@@ -493,24 +499,6 @@ services:
     # network_mode: "host"
     volumes:
       - garnetdata:/data
-
-  # Start page for your server
-  flame:
-    image: pawelmalak/flame:multiarch
-    container_name: flame
-    restart: unless-stopped
-    expose:
-      - 5005
-    environment:
-      - PASSWORD=${FLAME_PASSWORD}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.flame.rule=Host(`${FLAME_HOSTNAME}`)"
-      - "traefik.http.routers.flame.entrypoints=websecure"
-      - "traefik.http.routers.flame.tls.certresolver=myresolver"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data/flame:/app/data
 
   # Status page for monitoring uptime
   uptime-kuma:
@@ -569,7 +557,7 @@ services:
     volumes:  
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # Web UI for viewing logs
+  # Web UI for viewing logs of all services and containers. 
   dozzle:
     image: amir20/dozzle:latest
     container_name: dozzle
@@ -598,6 +586,7 @@ services:
       retries: 5
       start_period: 30s
   
+  # Traefik is a reverse proxy that will handle SSL certificates and routing for all services and containers.
   traefik:
     image: traefik:v3
     container_name: traefik
@@ -630,6 +619,21 @@ services:
       timeout: 5s
       retries: 3
 
+  addon-manager:
+    image: reddravenn/stremio-addon-manager:latest
+    container_name: addon-manager
+    restart: unless-stopped
+    expose:
+      - 80
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.addon-manager.rule=Host(`${ADDON_MANAGER_HOSTNAME}`)"
+      - "traefik.http.routers.addon-manager.entrypoints=websecure"
+      - "traefik.http.routers.addon-manager.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=Stremio Addon Manager"
+      - "flame.url=https://${ADDON_MANAGER_HOSTNAME}"
+
   # https://github.com/5rahim/seanime
   # App/Server for anime.
   seanime:
@@ -660,21 +664,7 @@ services:
       retries: 5
       start_period: 10s
 
-  addon-manager:
-    image: reddravenn/stremio-addon-manager:latest
-    container_name: addon-manager
-    restart: unless-stopped
-    expose:
-      - 80
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.addon-manager.rule=Host(`${ADDON_MANAGER_HOSTNAME}`)"
-      - "traefik.http.routers.addon-manager.entrypoints=websecure"
-      - "traefik.http.routers.addon-manager.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=Stremio Addon Manager"
-      - "flame.url=https://${ADDON_MANAGER_HOSTNAME}"
-
+# Honey is a dashboard for launching services. It's more basic but looks nicer and is easier to use than Flame. It will have  a config.json file in the ./data/honey directory.
   honey:
     image: ghcr.io/dani3l0/honey:latest
     container_name: honey
@@ -691,7 +681,26 @@ services:
       - "flame.type=app"
       - "flame.name=Honey"
       - "flame.url=https://${HONEY_HOSTNAME}"
+
+# Start page for your server with links to all services. Alternative to Honey
+  flame:
+    image: pawelmalak/flame:multiarch
+    container_name: flame
+    restart: unless-stopped
+    expose:
+      - 5005
+    environment:
+      - PASSWORD=${FLAME_PASSWORD}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flame.rule=Host(`${FLAME_HOSTNAME}`)"
+      - "traefik.http.routers.flame.entrypoints=websecure"
+      - "traefik.http.routers.flame.tls.certresolver=myresolver"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/flame:/app/data
   
+  # Dashdot is a dashboard for monitoring basic server stats. 
   dash:
     image: mauricenino/dashdot:latest
     container_name: dashdot
@@ -715,41 +724,40 @@ services:
       - "flame.name=dash"
       - "flame.url=https://${DASH_HOSTNAME}"
 
-  byparr:
-    image: ghcr.io/thephaseless/byparr:main
-    container_name: byparr
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=INFO
-    volumes:
-      - ./data/byparr/screenshots:/app/screenshots # For screenshots when exception occurs
-    healthcheck:
-      test: "curl -f http://localhost:8191/health"
-      interval: 3600s
-      timeout: 10s
-      retries: 3
-  
-    
-  dramatiq-worker:
-    image: mhdzumair/mediafusion:latest
-    container_name: dramatiq-worker
-    command: ["dramatiq", "api.task", "-p", "1", "-t", "4"]
-    env_file: 
-      - .env.mediafusion
-    restart: unless-stopped
+  # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
+  # Guides for other VPN providers are available at https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/
+  # gluetun:
+  #    image: qmcgaw/gluetun
+  #    container_name: gluetun
+  #    restart: unless-stopped
+  #    cap_add:
+  #      - NET_ADMIN
+  #    devices:
+  #      - /dev/net/tun:/dev/net/tun
+  #    ports:
+  #      - 127.0.0.1:8888:8888/tcp # HTTP proxy
+  #    environment:
+  #      - VPN_SERVICE_PROVIDER=protonvpn
+  #      - VPN_TYPE=wireguard
+  #      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+  #      - SERVER_COUNTRIES=Netherlands
+  #      - FREE_ONLY=true
+  #      # Server list updater
+  #      # See https://github.com/qdm12/gluetun-wiki/blob/main/setup/servers.md#update-the-vpn-servers-list
+  #      - UPDATER_PERIOD=24h
+  #      - HTTPPROXY=on
+  #      - HTTPPROXY_LISTENING_ADDRESS=:8888
+  #      - HTTPPROXY_STEALTH=on
+  #    volumes:
+  #      - gluetun-data:/gluetun
+  #    healthcheck:
+  #      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+  #      interval: 60s
+  #      timeout: 5s
+  #      retries: 3
+  #      start_period: 1m
 
-  browserless:
-    image: ghcr.io/browserless/chromium
-    container_name: browserless
-    environment:
-      - TIMEOUT=-1
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/json/version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
+# If you want to run a Minecraft server, this image will allow you to run it with Traefik for HTTPS support.
   # minecraft:
   #   image: itzg/minecraft-server:latest
   #   container_name: minecraft
