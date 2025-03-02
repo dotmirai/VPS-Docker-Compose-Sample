@@ -216,7 +216,8 @@ services:
       - "flame.type=app"
       - "flame.name=Stremio-Jackett"
       - "flame.url=https://${STREMIO_JACKETT_HOSTNAME}"
-    
+
+#Jackettio is a service that will allow you to search Jackett requests through Stremio, and then pass them on to your Debrid Service.
   jackettio:
     image: arvida42/jackettio:latest
     container_name: jackettio
@@ -491,7 +492,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-      
+
+# MongoDB is a NoSQL database that is used by multiple services.
   mongodb: 
     image: mongo:latest
     container_name: mongodb
@@ -504,7 +506,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
-  
+
+# Postgres is a SQL database that is used by multiple services.
   postgres:
     image: postgres:17.2-alpine
     container_name: postgres
@@ -537,7 +540,7 @@ services:
       timeout: 5s
       retries: 5
 
-#Garnet is a Redis server that is used as a drop-in replacement for the default Redis server. It is used by Stremthru, and optionally by MediaFusion.
+# Garnet is a Redis server that is used as a drop-in replacement for the default Redis server. It is used by Stremthru, and optionally by MediaFusion.
   garnet:
     image: 'ghcr.io/microsoft/garnet'
     container_name: garnet
