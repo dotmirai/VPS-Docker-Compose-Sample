@@ -1,5 +1,11 @@
+#This is Mirai's docker-compose.yaml file. It is used to deploy all services and containers to the VPS. While this is specific to myself, you can use it as a reference for your own deployment.
+#The servers herein are used for streaming, downloading, and monitoring Stremio addons, Debrid services, and other required containers for everything to function.
+#The services are deployed using Docker and Docker Compose. The services are deployed using Traefik as a reverse proxy, and all services are exposed using HTTPS.
+#You Must replace all the variables with your own values, in order to use this file, which will be stored and defined in a .env file, unless otherwise stated. 
+#There are a few extra services that are not related or required, like Minecraft, Gluetun, and Adguard, which are commented out.
+# ==============================================================STREMIO ADDONS====================================================================
 services:
-  # AIOStreams service
+  # AIOStreams service will allow you to consolidate, manage, and reorder stream results from multiple addons.
   aiostreams:
     image: viren070/aiostreams:latest
     container_name: aiostreams
@@ -147,31 +153,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
-  # Mediaflow Proxy service
-  mediaflow-proxy:
-    image: mhdzumair/mediaflow-proxy
-    container_name: mediaflow-proxy
-    restart: unless-stopped
-    expose:
-      - 8888
-    environment:
-      API_PASSWORD: ${MEDIAFLOW_API_PASSWORD}
-      PROXY_URL: http://warp:1080
-      TRANSPORT_ROUTES: '{ "https://torrentio.strem.fun": { "proxy": true } }'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.mediaflow.rule=Host(`${MEDIAFLOW_HOSTNAME}`)"
-      - "traefik.http.routers.mediaflow.entrypoints=websecure"
-      - "traefik.http.routers.mediaflow.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=MediaFlow Proxy"
-      - "flame.url=https://${MEDIAFLOW_HOSTNAME}"
-    healthcheck:
-      test: python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8888/health').read().decode())"
-      interval: 1m
-      timeout: 10s
-      retries: 5
-      start_period: 10s
 
   # MediaFusion
   mediafusion:
@@ -180,7 +161,7 @@ services:
     restart: unless-stopped
     expose:
       - 8000
-    env_file: 
+    env_file: # You will define the environment variables in this extra .env file instead of in the normal .env file. Both it and the .env file are required.
       - .env.mediafusion
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -221,40 +202,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  stremthru:
-    image: muniftanjim/stremthru:latest-heavy
-    container_name: stremthru
-    restart: unless-stopped
-    expose:
-      - 8080
-    environment:
-      - STREMTHRU_HTTP_PROXY=http://warp:1080
-      - STREMTHRU_TUNNEL=*:false,torrentio.strem.fun:true       # Only tunnel hostnames that block VPS access (e.g. Torrentio)
-      - STREMTHRU_PROXY_AUTH=${STREMTHRU_PROXY_AUTH}            # user1:pass1,user2:pass2
-      - STREMTHRU_STORE_AUTH=${STREMTHRU_STORE_AUTH}            # *:realdebrid:abc...xyz Add apikey
-      - STREMTHRU_STORE_TUNNEL=realdebrid:api                   # Only send RD API via tunnel, not all access (e.g playback)
-      - STREMTHRU_STORE_CONTENT_PROXY=*:true,easydebrid:false,premiumize:false,torbox:false
-      - STREMTHRU_PEER_URI=https://stremthru.13377001.xyz/
-      - STREMTHRU_DATABASE_URI=sqlite://./data/stremthru.db #OLD ONE - STREMTHRU_DATABASE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/stremthru?sslmode=disable
-      - STREMTHRU_REDIS_URI=redis://garnet:6379
-    depends_on:
-      warp:
-        condition: service_healthy
-    volumes:
-      - ./data/stremthru:/app/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.stremthru.rule=Host(`${STREMTHRU_HOSTNAME}`) || Host(`${STREMTHRU_HOSTNAME_2}`)"
-      - "traefik.http.routers.stremthru.entrypoints=websecure"
-      - "traefik.http.routers.stremthru.tls.certresolver=myresolver"
-      - "traefik.http.services.stremthru.loadbalancer.server.port=8080"
-      - "flame.type=app"
-      - "flame.name=StremThru"
-      - "flame.url=https://${STREMTHRU_HOSTNAME}"
   
-
-
   stremio-jackett:
     image: belmeg/stremio-addon-jackett
     container_name: stremio-jackett
@@ -294,7 +242,83 @@ services:
       - "flame.type=app"
       - "flame.name=Jackettio"
       - "flame.url=https://${JACKETTIO_HOSTNAME}"
-    
+
+#==============================================================STREMIO & DEBRID UTILITIES====================================================================
+#Stremthru is a service that will allow you to wrap other addons, check debrid cache status, and allow you to proxy addons if required. It will run at http://stremthru:8080
+  stremthru:
+    image: muniftanjim/stremthru:latest-heavy
+    container_name: stremthru
+    restart: unless-stopped
+    expose:
+      - 8080
+    environment:
+      - STREMTHRU_HTTP_PROXY=http://warp:1080
+      - STREMTHRU_TUNNEL=*:false,torrentio.strem.fun:true       # Only tunnel hostnames that block VPS access (e.g. Torrentio)
+      - STREMTHRU_PROXY_AUTH=${STREMTHRU_PROXY_AUTH}            # user1:pass1,user2:pass2
+      - STREMTHRU_STORE_AUTH=${STREMTHRU_STORE_AUTH}            # *:realdebrid:abc...xyz Add apikey
+      - STREMTHRU_STORE_TUNNEL=realdebrid:api                   # Only send RD API via tunnel, not all access (e.g playback)
+      - STREMTHRU_STORE_CONTENT_PROXY=*:true,easydebrid:false,premiumize:false,torbox:false
+      - STREMTHRU_PEER_URI=https://stremthru.13377001.xyz/
+      - STREMTHRU_DATABASE_URI=sqlite://./data/stremthru.db #OLD ONE - STREMTHRU_DATABASE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/stremthru?sslmode=disable
+      - STREMTHRU_REDIS_URI=redis://garnet:6379
+    depends_on:
+      warp:
+        condition: service_healthy
+    volumes:
+      - ./data/stremthru:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stremthru.rule=Host(`${STREMTHRU_HOSTNAME}`) || Host(`${STREMTHRU_HOSTNAME_2}`)"
+      - "traefik.http.routers.stremthru.entrypoints=websecure"
+      - "traefik.http.routers.stremthru.tls.certresolver=myresolver"
+      - "traefik.http.services.stremthru.loadbalancer.server.port=8080"
+      - "flame.type=app"
+      - "flame.name=StremThru"
+      - "flame.url=https://${STREMTHRU_HOSTNAME}"
+
+# Stremio Addon Manager is a service that will allow you to rename, reorder, and edit the settings of your Stremio addons.
+  addon-manager:
+    image: reddravenn/stremio-addon-manager:latest
+    container_name: addon-manager
+    restart: unless-stopped
+    expose:
+      - 80
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.addon-manager.rule=Host(`${ADDON_MANAGER_HOSTNAME}`)"
+      - "traefik.http.routers.addon-manager.entrypoints=websecure"
+      - "traefik.http.routers.addon-manager.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=Stremio Addon Manager"
+      - "flame.url=https://${ADDON_MANAGER_HOSTNAME}"
+
+  # Mediaflow Proxy service that will proxy stream and video content requests to the VPS. This allows for multiple devices to appear as using a single IP address. 
+  mediaflow-proxy:
+    image: mhdzumair/mediaflow-proxy
+    container_name: mediaflow-proxy
+    restart: unless-stopped
+    expose:
+      - 8888
+    environment:
+      API_PASSWORD: ${MEDIAFLOW_API_PASSWORD}
+      PROXY_URL: http://warp:1080
+      TRANSPORT_ROUTES: '{ "https://torrentio.strem.fun": { "proxy": true } }'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mediaflow.rule=Host(`${MEDIAFLOW_HOSTNAME}`)"
+      - "traefik.http.routers.mediaflow.entrypoints=websecure"
+      - "traefik.http.routers.mediaflow.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=MediaFlow Proxy"
+      - "flame.url=https://${MEDIAFLOW_HOSTNAME}"
+    healthcheck:
+      test: python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8888/health').read().decode())"
+      interval: 1m
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+# Zilean is a service that allows addons to search for DebridMediaManager sourced torrents shared by users.
   zilean:
     image: ipromknight/zilean:latest
     restart: unless-stopped
@@ -315,6 +339,7 @@ services:
     volumes:
       - zilean-tmp:/tmp
 
+# Prowlarr is a service that will allow you to manage your torrent indexers and download clients. It's slower but has more *arr integration than Jackett. It will run at http://prowlarr:9696
   prowlarr:
     image: ghcr.io/hotio/prowlarr:latest
     container_name: prowlarr
@@ -337,6 +362,7 @@ services:
       - "flame.name=Prowlarr"
       - "flame.url=https://${PROWLARR_HOSTNAME}"
 
+# Jackett is a service that will allow you to manage your torrent indexers. It's faster but has less *arr integration than Prowlarr. It will run at http://jackett:9117
   jackett:
     image: linuxserver/jackett:latest
     container_name: jackett
@@ -364,6 +390,7 @@ services:
       retries: 3
       start_period: 30s
   
+# NZBHydra2 is a service that will allow you to manage your Usenet indexers.
   nzbhydra2:
     container_name: nzbhydra2
     image: ghcr.io/hotio/nzbhydra2:latest
@@ -385,6 +412,37 @@ services:
       - "flame.type=app"
       - "flame.name=NZBHydra2"
       - "flame.url=https://${NZBHYDRA2_HOSTNAME}"
+
+# Seanime is a streaming server that will allow you to stream anime from your own collection or from a debrid service.
+  seanime:
+    image: umagistr/seanime
+    container_name: seanime
+    command: 
+    volumes:
+      - /mnt/user/anime:/anime
+      - /mnt/user/downloads:/downloads
+      - ./data/seanime:/root/.config/Seanime
+    expose:
+      - 43211
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.seanime.rule=Host(`${SEANIME_HOSTNAME}`)"
+      - "traefik.http.routers.seanime.entrypoints=websecure"
+      - "traefik.http.routers.seanime.tls.certresolver=myresolver"
+      - "traefik.http.routers.seanime.middlewares=seanime-auth"
+      - "traefik.http.middlewares.seanime-auth.basicauth.users=${SEANIME_USERNAME}:${SEANIME_HASHED_PASSWORD}"
+      - "flame.type=app"
+      - "flame.name=Seanime"
+      - "flame.url=https://${SEANIME_HOSTNAME}"
+    healthcheck:
+      test: wget -qO- http://localhost:43211/api/v1/status
+      interval: 5m
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+# ==============================================================DOCKER SERVER UTILITIES AND DATABASES====================================================================
 
 #Byparr is a service that can be used to bypass Cloudflare's anti-bot protection. It's a drop in replacement for flaresolverr. It will run at http://byaprr:8191
   byparr:
@@ -500,28 +558,6 @@ services:
     volumes:
       - garnetdata:/data
 
-  # Status page for monitoring uptime
-  uptime-kuma:
-    image: louislam/uptime-kuma:latest
-    container_name: kuma
-    restart: unless-stopped
-    expose:
-      - 3001
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.uptime-kuma.rule=Host(`${UPTIME_KUMA_HOSTNAME}`)"
-      - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
-      - "traefik.http.routers.uptime-kuma.tls.certresolver=myresolver"
-      - "traefik.http.routers.status-page.rule=Host(`${STATUS_PAGE_HOSTNAME}`)"
-      - "traefik.http.routers.status-page.entrypoints=websecure"
-      - "traefik.http.routers.status-page.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=Uptime Kuma"
-      - "flame.url=https://${UPTIME_KUMA_HOSTNAME}"
-    volumes:
-      - ./data/kuma:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
-
   # Watchtower for auto-updating services
   watchtower:
     image: containrrr/watchtower
@@ -556,6 +592,41 @@ services:
 
     volumes:  
       - /var/run/docker.sock:/var/run/docker.sock
+  
+  # Traefik is a reverse proxy that will handle SSL certificates and routing for all services and containers.
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - 443:443
+      #- 80:80  # adguard/minecraft
+      - 127.0.0.1:8080:8080
+      # - 853:853/tcp  # adguard
+      #- 25565:25565/tcp  # Minecraft server port
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      #- "--entryPoints.web.address=:80"  # adguard
+      - "--entryPoints.websecure.address=:443"
+      # - "--entryPoints.dot.address=:853"  # adguard
+      #- "--entryPoints.minecraft.address=:25565"  # Minecraft entry point
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=INFO"
+      - "--ping"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./data/letsencrypt:/letsencrypt"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+# ==============================================================SERVER DASHBOARDS AND METRICS====================================================================
 
   # Web UI for viewing logs of all services and containers. 
   dozzle:
@@ -585,84 +656,29 @@ services:
       timeout: 30s
       retries: 5
       start_period: 30s
-  
-  # Traefik is a reverse proxy that will handle SSL certificates and routing for all services and containers.
-  traefik:
-    image: traefik:v3
-    container_name: traefik
-    restart: unless-stopped
-    ports:
-      - 443:443
-      #- 80:80  # adguard/minecraft
-      - 127.0.0.1:8080:8080
-      # - 853:853/tcp  # adguard
-      #- 25565:25565/tcp  # Minecraft server port
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      #- "--entryPoints.web.address=:80"  # adguard
-      - "--entryPoints.websecure.address=:443"
-      # - "--entryPoints.dot.address=:853"  # adguard
-      #- "--entrypoints.minecraft.address=:25565"  # Minecraft entry point
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--log.level=INFO"
-      - "--ping"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./data/letsencrypt:/letsencrypt"
-    healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
-  addon-manager:
-    image: reddravenn/stremio-addon-manager:latest
-    container_name: addon-manager
+# Status page for monitoring uptime
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: kuma
     restart: unless-stopped
     expose:
-      - 80
+      - 3001
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.addon-manager.rule=Host(`${ADDON_MANAGER_HOSTNAME}`)"
-      - "traefik.http.routers.addon-manager.entrypoints=websecure"
-      - "traefik.http.routers.addon-manager.tls.certresolver=myresolver"
+      - "traefik.http.routers.uptime-kuma.rule=Host(`${UPTIME_KUMA_HOSTNAME}`)"
+      - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
+      - "traefik.http.routers.uptime-kuma.tls.certresolver=myresolver"
+      - "traefik.http.routers.status-page.rule=Host(`${STATUS_PAGE_HOSTNAME}`)"
+      - "traefik.http.routers.status-page.entrypoints=websecure"
+      - "traefik.http.routers.status-page.tls.certresolver=myresolver"
       - "flame.type=app"
-      - "flame.name=Stremio Addon Manager"
-      - "flame.url=https://${ADDON_MANAGER_HOSTNAME}"
-
-  # https://github.com/5rahim/seanime
-  # App/Server for anime.
-  seanime:
-    image: umagistr/seanime
-    container_name: seanime
-    command: 
+      - "flame.name=Uptime Kuma"
+      - "flame.url=https://${UPTIME_KUMA_HOSTNAME}"
     volumes:
-      - /mnt/user/anime:/anime
-      - /mnt/user/downloads:/downloads
-      - ./data/seanime:/root/.config/Seanime
-    expose:
-      - 43211
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.seanime.rule=Host(`${SEANIME_HOSTNAME}`)"
-      - "traefik.http.routers.seanime.entrypoints=websecure"
-      - "traefik.http.routers.seanime.tls.certresolver=myresolver"
-      - "traefik.http.routers.seanime.middlewares=seanime-auth"
-      - "traefik.http.middlewares.seanime-auth.basicauth.users=${SEANIME_USERNAME}:${SEANIME_HASHED_PASSWORD}"
-      - "flame.type=app"
-      - "flame.name=Seanime"
-      - "flame.url=https://${SEANIME_HOSTNAME}"
-    healthcheck:
-      test: wget -qO- http://localhost:43211/api/v1/status
-      interval: 5m
-      timeout: 10s
-      retries: 5
-      start_period: 10s
+      - ./data/kuma:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
 
 # Honey is a dashboard for launching services. It's more basic but looks nicer and is easier to use than Flame. It will have  a config.json file in the ./data/honey directory.
   honey:
@@ -723,6 +739,9 @@ services:
       - "flame.type=app"
       - "flame.name=dash"
       - "flame.url=https://${DASH_HOSTNAME}"
+
+
+# ==============================================================OPTIONAL SERVICES & EXTRA FUN GOODIES====================================================================
 
   # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
   # Guides for other VPN providers are available at https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/
