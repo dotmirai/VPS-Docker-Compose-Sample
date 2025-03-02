@@ -1,6 +1,10 @@
 #Env Files which should NOT be uploaded to git
 .env
+.env.mediafusion
 
 #RSA Keys
 .key
 .pub
+
+#VSCode Workspace
+.code-workspace
