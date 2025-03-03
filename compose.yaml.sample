@@ -714,7 +714,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data/flame:/app/data
   
-
   # Dashdot is a dashboard for monitoring basic server stats. 
   dash:
     image: mauricenino/dashdot:latest
