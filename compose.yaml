@@ -2,7 +2,7 @@
 #The servers herein are used for streaming, downloading, and monitoring Stremio addons, Debrid services, and other required containers for everything to function.
 #The services are deployed using Docker and Docker Compose. The services are deployed using Traefik as a reverse proxy, and all services are exposed using HTTPS.
 #You Must replace all the variables with your own values, in order to use this file, which will be stored and defined in a .env file, unless otherwise stated. 
-#There are a few extra services that are not related or required, like Minecraft, Gluetun, and Adguard, which are commented out.
+#There are a few extra services that are not related or required, like Minecraft, Gluetun, and others, which are commented out.
 
 #This originally started out as a fork and similar project to Viren070's compose file, but has since been heavily modified and expanded upon.
 # ==============================================================STREMIO ADDONS====================================================================
@@ -600,17 +600,15 @@ services:
     restart: unless-stopped
     ports:
       - 443:443
-      #- 80:80  # adguard/minecraft
+      #- 80:80  # minecraft required port
       - 127.0.0.1:8080:8080
-      # - 853:853/tcp  # adguard
       #- 25565:25565/tcp  # Minecraft server port
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      #- "--entryPoints.web.address=:80"  # adguard
+      #- "--entryPoints.web.address=:80"  # minecraft required port
       - "--entryPoints.websecure.address=:443"
-      # - "--entryPoints.dot.address=:853"  # adguard
       #- "--entryPoints.minecraft.address=:25565"  # Minecraft entry point
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
@@ -744,7 +742,6 @@ services:
 # ==============================================================OPTIONAL SERVICES & EXTRA FUN GOODIES====================================================================
 
   # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
-  # Guides for other VPN providers are available at https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/
   # gluetun:
   #    image: qmcgaw/gluetun
   #    container_name: gluetun
@@ -759,7 +756,7 @@ services:
   #      - VPN_SERVICE_PROVIDER=protonvpn
   #      - VPN_TYPE=wireguard
   #      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-  #      - SERVER_COUNTRIES=Netherlands
+  #      #- SERVER_COUNTRIES=United_States
   #      - FREE_ONLY=true
   #      # Server list updater
   #      # See https://github.com/qdm12/gluetun-wiki/blob/main/setup/servers.md#update-the-vpn-servers-list
