@@ -741,68 +741,68 @@ services:
 
 # ==============================================================OPTIONAL SERVICES & EXTRA FUN GOODIES====================================================================
 
-#Matrix is a chat service that will allow you to chat with others. It provides end-to-end encryption and is a great alternative to Discord.
-#Synapse is the homeserver implementation for the Matrix Protocol.
-#This has a very complex setup, and I'd recommend following https://docs.techdox.nz/matrix/ to set it up.
-#TLDR: Generate the Matrix Config at Step 3, by running "docker run -it --rm -v ./data/synapse:/data -e SYNAPSE_SERVER_NAME=matrix.yourdomain.com -e SYNAPSE_REPORT_STATS=yes matrixdotorg/synapse:latest generate"
-#Then edit the resulting homeserver.yaml file to add your domain and other settings according to the guide from the sample file down.
-#Lastly after the homeserver.yaml file is set up, run "docker exec -it synapse register_new_matrix_user -u YOURUSERNAMEHERE -p YOURPASSWORDHERE -a -c /data/homeserver.yaml http://localhost:8008" while the container is up to set up your admin account. 
-  synapse:
-    container_name: synapse
-    image: matrixdotorg/synapse:latest
-    restart: unless-stopped
-    volumes:
-      - ./data/synapse:/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.synapse.rule=Host(`${MATRIX_HOSTNAME}`)"
-      - "traefik.http.routers.synapse.entrypoints=websecure"
-      - "traefik.http.routers.synapse.tls.certresolver=myresolver"
+# #Matrix is a chat service that will allow you to chat with others. It provides end-to-end encryption and is a great alternative to Discord.
+# #Synapse is the homeserver implementation for the Matrix Protocol.
+# #This has a very complex setup, and I'd recommend following https://docs.techdox.nz/matrix/ to set it up.
+# #TLDR: Generate the Matrix Config at Step 3, by running "docker run -it --rm -v ./data/synapse:/data -e SYNAPSE_SERVER_NAME=matrix.yourdomain.com -e SYNAPSE_REPORT_STATS=yes matrixdotorg/synapse:latest generate"
+# #Then edit the resulting homeserver.yaml file to add your domain and other settings according to the guide from the sample file down.
+# #Lastly after the homeserver.yaml file is set up, run "docker exec -it synapse register_new_matrix_user -u YOURUSERNAMEHERE -p YOURPASSWORDHERE -a -c /data/homeserver.yaml http://localhost:8008" while the container is up to set up your admin account. 
+#   synapse:
+#     container_name: synapse
+#     image: matrixdotorg/synapse:latest
+#     restart: unless-stopped
+#     volumes:
+#       - ./data/synapse:/data
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.synapse.rule=Host(`${MATRIX_HOSTNAME}`)"
+#       - "traefik.http.routers.synapse.entrypoints=websecure"
+#       - "traefik.http.routers.synapse.tls.certresolver=myresolver"
 
 
-#Chibisafe is a file hosting service that will allow you to upload files to your server, and share them with others.
-#YOU MUST ALSO INSTALL ffmpeg ON YOUR HOST MACHINE FOR THIS TO WORK. Run sudo apt install ffmpeg to install it.
-  chibisafe:
-    image: chibisafe/chibisafe:latest
-    container_name: chibisafe
-    restart: unless-stopped
-    volumes:
-      - ./data/chibisafe/database:/home/node/chibisafe/database:rw
-      - ./data/chibisafe/uploads:/home/node/chibisafe/uploads:rw
-      - ./data/chibisafe/logs:/home/node/chibisafe/logs:rw
-      #- ./data/chibisafe:/home/node/chibisafe/data:rw
-    #ports:
-    #  - 24424:8000
-    environment:
-      - CHIBISAFE_LOG_LEVEL=Error
-      - BASE_API_URL=http://chibisafe-server:8000
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.chibisafe.rule=Host(`${CHIBISAFE_HOSTNAME}`) && !PathPrefix(`/api`) && !PathPrefix(`/docs`)"
-      - "traefik.http.routers.chibisafe.entrypoints=websecure"
-      - "traefik.http.routers.chibisafe.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=chibisafe"
-      - "flame.url=https://${CHIBISAFE_HOSTNAME}"
+# #Chibisafe is a file hosting service that will allow you to upload files to your server, and share them with others.
+# #YOU MUST ALSO INSTALL ffmpeg ON YOUR HOST MACHINE FOR THIS TO WORK. Run sudo apt install ffmpeg to install it.
+#   chibisafe:
+#     image: chibisafe/chibisafe:latest
+#     container_name: chibisafe
+#     restart: unless-stopped
+#     volumes:
+#       - ./data/chibisafe/database:/home/node/chibisafe/database:rw
+#       - ./data/chibisafe/uploads:/home/node/chibisafe/uploads:rw
+#       - ./data/chibisafe/logs:/home/node/chibisafe/logs:rw
+#       #- ./data/chibisafe:/home/node/chibisafe/data:rw
+#     #ports:
+#     #  - 24424:8000
+#     environment:
+#       - CHIBISAFE_LOG_LEVEL=Error
+#       - BASE_API_URL=http://chibisafe-server:8000
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.chibisafe.rule=Host(`${CHIBISAFE_HOSTNAME}`) && !PathPrefix(`/api`) && !PathPrefix(`/docs`)"
+#       - "traefik.http.routers.chibisafe.entrypoints=websecure"
+#       - "traefik.http.routers.chibisafe.tls.certresolver=myresolver"
+#       - "flame.type=app"
+#       - "flame.name=chibisafe"
+#       - "flame.url=https://${CHIBISAFE_HOSTNAME}"
   
-  chibisafe-server:
-    image: chibisafe/chibisafe-server:latest
-    container_name: chibisafe-server
-    environment:
-      - ADMIN_PASSWORD=${CHIBISAFE_ADMIN_PASSWORD}
-    volumes:
-      - ./data/chibisafe/database:/app/database:rw
-      - ./data/chibisafe/uploads:/app/uploads:rw
-      - ./data/chibisafe/logs:/app/logs:rw
-    expose:
-      - 8000
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.chibisafe-server.entrypoints=websecure"
-      #- "traefik.http.routers.chibisafe-server.service=chibisafe-server"
-      - "traefik.http.routers.chibisafe-server.tls.certresolver=myresolver"
-      - "traefik.http.routers.chibisafe-server.rule=Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/api`) || PathPrefix(`/docs`)"
+#   chibisafe-server:
+#     image: chibisafe/chibisafe-server:latest
+#     container_name: chibisafe-server
+#     environment:
+#       - ADMIN_PASSWORD=${CHIBISAFE_ADMIN_PASSWORD}
+#     volumes:
+#       - ./data/chibisafe/database:/app/database:rw
+#       - ./data/chibisafe/uploads:/app/uploads:rw
+#       - ./data/chibisafe/logs:/app/logs:rw
+#     expose:
+#       - 8000
+#     restart: unless-stopped
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.chibisafe-server.entrypoints=websecure"
+#       #- "traefik.http.routers.chibisafe-server.service=chibisafe-server"
+#       - "traefik.http.routers.chibisafe-server.tls.certresolver=myresolver"
+#       - "traefik.http.routers.chibisafe-server.rule=Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/api`) || PathPrefix(`/docs`)"
       
 
   # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
