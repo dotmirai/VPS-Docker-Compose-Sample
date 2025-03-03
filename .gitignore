@@ -1,3 +1,6 @@
+#Base compose.yaml file
+compose.yaml
+
 #Env Files which should NOT be uploaded to git
 .env
 .env.mediafusion
