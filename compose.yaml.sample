@@ -759,50 +759,65 @@ services:
 #       - "traefik.http.routers.synapse.entrypoints=websecure"
 #       - "traefik.http.routers.synapse.tls.certresolver=myresolver"
 
-
-# #Chibisafe is a file hosting service that will allow you to upload files to your server, and share them with others.
-# #YOU MUST ALSO INSTALL ffmpeg ON YOUR HOST MACHINE FOR THIS TO WORK. Run sudo apt install ffmpeg to install it.
-#   chibisafe:
-#     image: chibisafe/chibisafe:latest
-#     container_name: chibisafe
-#     restart: unless-stopped
-#     volumes:
-#       - ./data/chibisafe/database:/home/node/chibisafe/database:rw
-#       - ./data/chibisafe/uploads:/home/node/chibisafe/uploads:rw
-#       - ./data/chibisafe/logs:/home/node/chibisafe/logs:rw
-#       #- ./data/chibisafe:/home/node/chibisafe/data:rw
-#     #ports:
-#     #  - 24424:8000
-#     environment:
-#       - CHIBISAFE_LOG_LEVEL=Error
-#       - BASE_API_URL=http://chibisafe-server:8000
-#     labels:
-#       - "traefik.enable=true"
-#       - "traefik.http.routers.chibisafe.rule=Host(`${CHIBISAFE_HOSTNAME}`) && !PathPrefix(`/api`) && !PathPrefix(`/docs`)"
-#       - "traefik.http.routers.chibisafe.entrypoints=websecure"
-#       - "traefik.http.routers.chibisafe.tls.certresolver=myresolver"
-#       - "flame.type=app"
-#       - "flame.name=chibisafe"
-#       - "flame.url=https://${CHIBISAFE_HOSTNAME}"
+#Chibisafe is a file hosting service that will allow you to upload files to your server, and share them with others.
+#YOU MUST ALSO INSTALL ffmpeg ON YOUR HOST MACHINE FOR THIS TO WORK. Run sudo apt install ffmpeg to install it.
+  # chibisafe:
+  #   image: chibisafe/chibisafe:latest
+  #   container_name: chibisafe
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./data/chibisafe/database:/home/node/chibisafe/database:rw
+  #     - ./data/chibisafe/uploads:/home/node/chibisafe/uploads:rw
+  #     - ./data/chibisafe/logs:/home/node/chibisafe/logs:rw
+  #   environment:
+  #     - CHIBISAFE_LOG_LEVEL=Error
+  #     - BASE_API_URL=http://chibisafe-server:8000
+  #     - CDN_URL=https://${CHIBISAFE_CDN_HOSTNAME}
+  #     - DOMAIN=${CHIBISAFE_HOSTNAME}
+  #     - UPLOADS_FOLDER=/home/node/chibisafe/uploads
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.chibisafe.rule=Host(`${CHIBISAFE_HOSTNAME}`) && !PathPrefix(`/api`) && !PathPrefix(`/docs`)"
+  #     - "traefik.http.routers.chibisafe.entrypoints=websecure"
+  #     - "traefik.http.routers.chibisafe.tls.certresolver=myresolver"
+  #     - "flame.type=app"
+  #     - "flame.name=chibisafe"
+  #     - "flame.url=https://${CHIBISAFE_HOSTNAME}"
   
-#   chibisafe-server:
-#     image: chibisafe/chibisafe-server:latest
-#     container_name: chibisafe-server
-#     environment:
-#       - ADMIN_PASSWORD=${CHIBISAFE_ADMIN_PASSWORD}
-#     volumes:
-#       - ./data/chibisafe/database:/app/database:rw
-#       - ./data/chibisafe/uploads:/app/uploads:rw
-#       - ./data/chibisafe/logs:/app/logs:rw
-#     expose:
-#       - 8000
-#     restart: unless-stopped
-#     labels:
-#       - "traefik.enable=true"
-#       - "traefik.http.routers.chibisafe-server.entrypoints=websecure"
-#       #- "traefik.http.routers.chibisafe-server.service=chibisafe-server"
-#       - "traefik.http.routers.chibisafe-server.tls.certresolver=myresolver"
-#       - "traefik.http.routers.chibisafe-server.rule=Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/api`) || PathPrefix(`/docs`)"
+  # chibisafe-server:
+  #   image: chibisafe/chibisafe-server:latest
+  #   container_name: chibisafe-server
+  #   environment:
+  #     - ADMIN_PASSWORD=${CHIBISAFE_ADMIN_PASSWORD}
+  #   volumes:
+  #     - ./data/chibisafe/database:/app/database:rw
+  #     - ./data/chibisafe/uploads:/app/uploads:rw
+  #     - ./data/chibisafe/logs:/app/logs:rw
+  #   expose:
+  #     - 8000
+  #   restart: unless-stopped
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.services.chibisafe-server-service.loadbalancer.server.port=8000"
+  #     - "traefik.http.routers.chibisafe-server.entrypoints=websecure"
+  #     - "traefik.http.routers.chibisafe-server.tls.certresolver=myresolver"
+  #     - "traefik.http.routers.chibisafe-server.rule=Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/api`) || PathPrefix(`/docs`)"
+  #     - "traefik.http.routers.chibisafe-server.service=chibisafe-server"
+  #     - "traefik.http.routers.chibisafe-server.service=chibisafe-server-service"
+
+  # chibisafe-cdn:
+  #   image: nginx:alpine
+  #   container_name: chibisafe-cdn
+  #   volumes:
+  #     - ./data/chibisafe/uploads:/usr/share/nginx/html:ro
+  #   restart: unless-stopped
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.services.chibisafe-cdn-service.loadbalancer.server.port=80"
+  #     - "traefik.http.routers.chibisafe-cdn.entrypoints=websecure"
+  #     - "traefik.http.routers.chibisafe-cdn.tls.certresolver=myresolver"
+  #     - "traefik.http.routers.chibisafe-cdn.rule=Host(`${CHIBISAFE_CDN_HOSTNAME}`)"
+  #     - "traefik.http.routers.chibisafe-cdn.service=chibisafe-cdn-service"
       
 
   # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
