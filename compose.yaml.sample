@@ -694,23 +694,23 @@ services:
       - "flame.name=Honey"
       - "flame.url=https://${HONEY_HOSTNAME}"
 
-# Start page for your server with links to all services. Alternative to Honey
-  flame:
-    image: pawelmalak/flame:multiarch
-    container_name: flame
-    restart: unless-stopped
-    expose:
-      - 5005
-    environment:
-      - PASSWORD=${FLAME_PASSWORD}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.flame.rule=Host(`${FLAME_HOSTNAME}`)"
-      - "traefik.http.routers.flame.entrypoints=websecure"
-      - "traefik.http.routers.flame.tls.certresolver=myresolver"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data/flame:/app/data
+## Start page for your server with links to all services. Alternative to Honey
+#  flame:
+#    image: pawelmalak/flame:multiarch
+#    container_name: flame
+#    restart: unless-stopped
+#    expose:
+#      - 5005
+#    environment:
+#      - PASSWORD=${FLAME_PASSWORD}
+#    labels:
+#      - "traefik.enable=true"
+#      - "traefik.http.routers.flame.rule=Host(`${FLAME_HOSTNAME}`)"
+#      - "traefik.http.routers.flame.entrypoints=websecure"
+#      - "traefik.http.routers.flame.tls.certresolver=myresolver"
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#      - ./data/flame:/app/data
   
   # Dashdot is a dashboard for monitoring basic server stats. 
   dash:
