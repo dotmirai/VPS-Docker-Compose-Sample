@@ -602,14 +602,12 @@ services:
       - 443:443
       #- 80:80  # minecraft required port
       - 127.0.0.1:8080:8080
-      #- 25565:25565/tcp  # Minecraft server port
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       #- "--entryPoints.web.address=:80"  # minecraft required port
       - "--entryPoints.websecure.address=:443"
-      #- "--entryPoints.minecraft.address=:25565"  # Minecraft entry point
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
@@ -852,36 +850,31 @@ services:
   #      retries: 3
   #      start_period: 1m
 
-# If you want to run a Minecraft server, this image will allow you to run it with Traefik for HTTPS support.
-  # minecraft:
-  #   image: itzg/minecraft-server:latest
-  #   container_name: minecraft
-  #   tty: true
-  #   stdin_open: true
-  #   ports:
-  #     - "25565:25565"
-  #   environment:
-  #     EULA: "TRUE"
-  #     MEMORY: "4G"
-  #     MAX_PLAYERS: "10"
-  #     ICON: ${MINECRAFT_ICON}
-  #     OVERRIDE_ICON: "true"
-  #     TZ: ${TZ:-"America/New_York"}
-  #     DIFFICULTY: "2"
-  #     FORCE_GAMEMODE: "true"
-  #     LEVEL_TYPE: "amplified"
-  #     SPAWN_PROTECTION: "1"
-  #     ENABLE_WHITELIST: "true"
-  #     ENABLE_ROLLING_LOGS: "true"
-  #     LOG_TIMESTAMP: "true"
-  #   volumes:
-  #     - "./data/minecraft:/data"
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.tcp.routers.minecraft.rule=HostSNI(`${MINECRAFT_HOSTNAME}`)"
-  #     - "traefik.http.routers.minecraft.entrypoints=minecraft"
-  #     - "traefik.http.routers.minecraft.tls.certresolver=myresolver"
-  #     - "traefik.http.services.minecraft.loadbalancer.server.port=25565"  # Minecraft container port
+# If you want to run a Minecraft server, this image will allow you to run it. It *DOES NOT* use Traefik, so you must port forward port 25565 manually. 
+# On Oracle, where you port forward normally, port forward TCP and UDP with the destination port as 25565.
+  minecraft:
+    image: itzg/minecraft-server:latest
+    container_name: minecraft
+    restart: unless-stopped
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: "PAPER"
+      MEMORY: "4G"
+      MAX_PLAYERS: "10"
+      ICON: ${MINECRAFT_ICON}
+      OVERRIDE_ICON: "true"
+      TZ: ${TZ:-"America/New_York"}
+      DIFFICULTY: "2"
+      FORCE_GAMEMODE: "true"
+      LEVEL_TYPE: "amplified"
+      SPAWN_PROTECTION: "1"
+      ENABLE_WHITELIST: "false"
+      ENABLE_ROLLING_LOGS: "true"
+      LOG_TIMESTAMP: "true"
+    volumes:
+      - "./data/minecraft:/data"
 
 volumes:
   zilean-tmp:
