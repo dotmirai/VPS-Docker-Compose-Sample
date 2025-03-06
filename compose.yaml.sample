@@ -129,6 +129,8 @@ services:
       - REMOVE_ADULT_CONTENT=False
       - STREMTHRU_URL=http://stremthru:8080
       - DOWNLOAD_TORRENT_FILES=False
+      - SCRAPE_COMET=TRUE
+      - COMET_URL=https://comet.elfhosted.com
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.comet.rule=Host(`${COMET_HOSTNAME}`)"
@@ -244,7 +246,7 @@ services:
 
 #Stremthru is a service that will allow you to wrap other addons, check debrid cache status, and allow you to proxy addons if required. It will run at http://stremthru:8080
   stremthru:
-    image: muniftanjim/stremthru:latest-heavy
+    image: muniftanjim/stremthru:latest
     container_name: stremthru
     restart: unless-stopped
     expose:
