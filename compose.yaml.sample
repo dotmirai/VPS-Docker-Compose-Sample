@@ -852,31 +852,51 @@ services:
   #      retries: 3
   #      start_period: 1m
 
-# If you want to run a Minecraft server, this image will allow you to run it. It *DOES NOT* use Traefik, so you must port forward port 25565 manually. 
-# On Oracle, where you port forward normally, port forward TCP and UDP with the destination port as 25565.
-  minecraft:
-    image: itzg/minecraft-server:latest
-    container_name: minecraft
-    restart: unless-stopped
-    ports:
-      - "25565:25565"
-    environment:
-      EULA: "TRUE"
-      TYPE: "PAPER"
-      MEMORY: "4G"
-      MAX_PLAYERS: "10"
-      ICON: ${MINECRAFT_ICON}
-      OVERRIDE_ICON: "true"
-      TZ: ${TZ:-"America/New_York"}
-      DIFFICULTY: "2"
-      FORCE_GAMEMODE: "true"
-      LEVEL_TYPE: "amplified"
-      SPAWN_PROTECTION: "1"
-      ENABLE_WHITELIST: "false"
-      ENABLE_ROLLING_LOGS: "true"
-      LOG_TIMESTAMP: "true"
-    volumes:
-      - "./data/minecraft:/data"
+## If you want to run a Minecraft server, this image will allow you to run it. It *DOES NOT* use Traefik, so you must port forward port 25565 manually. 
+## On Oracle, where you port forward normally, port forward TCP and UDP with the destination port as 25565.
+#  minecraft:
+#    image: itzg/minecraft-server:latest
+#    container_name: minecraft
+#    restart: unless-stopped
+#    ports:
+#      - "25565:25565"
+#    environment:
+#      EULA: "TRUE"
+#      TYPE: "PAPER"
+#      MEMORY: "4G"
+#      MAX_PLAYERS: "10"
+#      ICON: ${MINECRAFT_ICON}
+#      OVERRIDE_ICON: "true"
+#      TZ: ${TZ:-"America/New_York"}
+#      DIFFICULTY: "2"
+#      FORCE_GAMEMODE: "true"
+#      LEVEL_TYPE: "amplified"
+#      SPAWN_PROTECTION: "1"
+#     ENABLE_WHITELIST: "false"
+#      ENABLE_ROLLING_LOGS: "true"
+#      LOG_TIMESTAMP: "true"
+#    volumes:
+#      - "./data/minecraft:/data"
+
+#Vaultwarden is a password manager that will allow you to store your passwords securely. It's a self-hosted alternative to Bitwarden.
+#   vaultwarden:
+#     image: vaultwarden/server:latest
+#     container_name: vaultwarden
+#     restart: unless-stopped
+#     expose:
+#       - 80
+#     environment:
+#       DOMAIN: "https://${VAULTWARDEN_HOSTNAME?}"
+#     volumes:
+#       - ./data/vaultwarden:/data/
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.vaultwarden.rule=Host(`${VAULTWARDEN_HOSTNAME?}`)"
+#       - "traefik.http.routers.vaultwarden.entrypoints=websecure"
+#       - "traefik.http.routers.vaultwarden.tls.certresolver=myresolver"
+#       - "flame.type=app"
+#       - "flame.name=Vaultwarden"
+#       - "flame.url=https://${VAULTWARDEN_HOSTNAME?}"
 
 volumes:
   zilean-tmp:
