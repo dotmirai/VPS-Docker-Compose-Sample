@@ -898,6 +898,23 @@ services:
 #       - "flame.name=Vaultwarden"
 #       - "flame.url=https://${VAULTWARDEN_HOSTNAME?}"
 
+# Cinny is a Matrix client that will allow you to chat with others. It's a great alternative to Element.
+#   cinny:
+#     image: ajbura/cinny:latest
+#     container_name: cinny
+#     restart: unless-stopped
+#     volumes:
+#       - ./data/cinny/config.json:/app/dist/config.json
+#       - ./data/cinny/config.json:/app/config.json
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.cinny.rule=Host(`${CINNY_HOSTNAME}`)"
+#       - "traefik.http.routers.cinny.entrypoints=websecure"
+#       - "traefik.http.routers.cinny.tls.certresolver=myresolver"
+#       - "flame.type=app"
+#       - "flame.name=Cinny"
+#       - "flame.url=https://${CINNY_HOSTNAME?}"
+
 volumes:
   zilean-tmp:
   redis-data:
