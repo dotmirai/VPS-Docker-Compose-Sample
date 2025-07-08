@@ -4,54 +4,43 @@
 #You Must replace all the variables with your own values, in order to use this file, which will be stored and defined in a .env file, unless otherwise stated. 
 #There are a few extra services that are not related or required, like Minecraft, Gluetun, and others, which are commented out.
 
-#This originally started out as a fork and similar project to Viren070's compose file, but has since been heavily modified and expanded upon.
+#This originally started out as a fork and similar project to Viren070's compose file, but has since been heavily modified and expanded upon as both projects have diverged over time.
 # ==============================================================STREMIO ADDONS====================================================================
 #This section is for services that are used to provide content to Stremio. They will be will be accessible through Stremio directly as addons. 
 services:
   # AIOStreams service will allow you to consolidate, manage, and reorder stream results from multiple addons.
   aiostreams:
-    image: viren070/aiostreams:latest
+    image: ghcr.io/viren070/aiostreams
     container_name: aiostreams
     restart: unless-stopped
     expose:
       - 3000
+    env_file:
+      - .env
     environment:
-      - ADDON_PROXY=http://warp:1080
-      - ADDON_PROXY_CONFIG=*:false,*.strem.fun:true   # only route requests to any strem.fun subdomain through the proxy
-      - EASYNEWS_PLUS_URL=http://easynews-plus:1337/
-      - MEDIAFUSION_URL=http://mediafusion:8000/
-      - MEDIAFUSION_API_PASSWORD=${MEDIAFUSION_API_PASSWORD}
-      - MEDIAFUSION_CONFIG_TIMEOUT=3000
-      - COMET_URL=http://comet:2020/
-      - FORCE_COMET_HOSTNAME=${COMET_HOSTNAME}
+      - PORT=3000
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=text
+      - LOG_SENSITIVE_INFO=false
       - COMET_INDEXERS=${COMET_INDEXERS:+${COMET_INDEXERS}}
-      - JACKETTIO_URL=http://jackettio:4000/
-      - STREMIO_JACKETT_URL=http://stremio-jackett:3000/
-      - JACKETT_URL=http://jackett:9117/
-      - JACKETT_API_KEY=${JACKETT_API_KEY:-}
-      - SECRET_KEY=${AIOSTREAMS_SECRET_KEY} # openssl rand -hex 16
-      - DEFAULT_TIMEOUT=5000
+      - MEDIAFUSION_API_PASSWORD=${MEDIAFUSION_API_PASSWORD}
+      - FORCE_COMET_HOSTNAME=${COMET_HOSTNAME}
       - TMDB_API_KEY=${TMDB_API_KEY}
-      - API_KEY=${AIOSTREAMS_API_KEY}
-      - JACKETT_INDEXERS=${COMET_INDEXERS:+${COMET_INDEXERS}}
+      - DATABASE_URI=${AIOSTREAMS_DATABASE_URI}
+      - TRUSTED_UUIDS=${AIO_TRUSTED_UUIDS}
+      - DEFAULT_JACKETTIO_INDEXERS=${COMET_INDEXERS:+${COMET_INDEXERS}}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.aio.rule=Host(`${AIOSTREAMS_HOSTNAME}`)"
       - "traefik.http.routers.aio.entrypoints=websecure"
       - "traefik.http.routers.aio.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=AIOStreams"
-      - "flame.url=https://${AIOSTREAMS_HOSTNAME}"
-    healthcheck:
-      test: wget -qO- http://localhost:3000/health
-      interval: 1m
-      timeout: 10s
-      retries: 5
-      start_period: 10s
+      - "traefik.http.routers.aio.middlewares=authelia@docker"
+    volumes:
+      - ${DOCKER_DATA_DIR}/aiostreams:/app/data
 
 # TMDB Addon is a service that will provide metadata for movies and TV shows on Stremio.
   tmdb-addon:
-    image: mrcanelas/tmdb-addon:latest
+    image: viren070/tmdb-addon:latest
     container_name: tmdb-addon
     restart: unless-stopped
     expose:
@@ -71,12 +60,22 @@ services:
       - "traefik.http.routers.tmdb.entrypoints=websecure"
       - "traefik.http.routers.tmdb.tls.certresolver=myresolver"
       - "traefik.http.services.tmdb.loadbalancer.server.port=3232"
-      - "flame.type=app"
-      - "flame.name=TMDB Addon"
-      - "flame.url=https://${TMDB_ADDON_HOSTNAME}"
+      - "traefik.http.routers.tmdb.middlewares=authelia@docker"
     depends_on:
-      mongodb:
+      tmdb-addon_mongo:
         condition: service_healthy
+  tmdb-addon_mongo: 
+    image: mongo:latest
+    container_name: tmdb-addon_mongo
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/tmdb-addon/db:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
 # EasyNews+ is a service that will provide access to Easynews' Usenet service, and allow you to stream them from Stremio.
   easynews-plus:
@@ -93,6 +92,7 @@ services:
       - "flame.type=app"
       - "flame.name=Easynews+"
       - "flame.url=https://${EASYNEWS_PLUS_HOSTNAME}"
+      - "traefik.http.routers.easynews.middlewares=authelia@docker"
 
 # Comet is an addon that will search your indexer manager for torrents and stream them to Stremio via your Debrid account.
   comet:
@@ -108,10 +108,13 @@ services:
       - ADDON_NAME=Comet
       - ADDON_ID=stremio.comet.fast
       - DASHBOARD_ADMIN_PASSWORD=${COMET_ADMIN_PASSWORD}
+      - USE_GUNICORN=True
       - DEBRID_PROXY_URL=http://warp:1080
       - DATABASE_TYPE=sqlite
       - DATABASE_PATH=data/comet.db # POSTGRES VARIANT - DATABASE_URL=${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/comet
-      - CACHE_TTL=86400 # 1 day
+      - METADATA_CACHE_TTL=2592000              # 30 days
+      - TORRENT_CACHE_TTL=1296000               # 15 days
+      - DEBRID_CACHE_TTL=86400                  # 1 day
       - DEBRID_PROXY_URL=http://warp:1080
       - INDEXER_MANAGER_TYPE=jackett #prowlarr or jackett
       - INDEXER_MANAGER_URL=http://jackett:9117 # http://prowlarr:9696 or http://jackett:9117
@@ -119,16 +122,17 @@ services:
       - INDEXER_MANAGER_TIMEOUT=60
       - INDEXER_MANAGER_INDEXERS=${COMET_INDEXERS:-[]} # comma separated list of indexer ids
       - GET_TORRENT_TIMEOUT=5
+      - DOWNLOAD_TORRENT_FILES=True
       - ZILEAN_URL=http://zilean:8181
       - ZILEAN_TAKE_FIRST=500
       - SCRAPE_TORRENTIO=False
       - SCRAPE_MEDIAFUSION=True
-      - MEDIAFUSION_URL=https://mediafusion.elfhosted.com
+      - MEDIAFUSION_URL=http://mediafusion:8000/ #https://mediafusion.elfhosted.com
+      - MEDIAFUSION_API_PASSWORD=${MEDIAFUSION_API_PASSWORD}
       - PROXY_DEBRID_STREAM=False
       - TITLE_MATCH_CHECK=True
       - REMOVE_ADULT_CONTENT=False
       - STREMTHRU_URL=http://stremthru:8080
-      - DOWNLOAD_TORRENT_FILES=False
       - SCRAPE_COMET=TRUE
       - COMET_URL=https://comet.elfhosted.com
     labels:
@@ -139,8 +143,9 @@ services:
       - "flame.type=app"
       - "flame.name=Comet"
       - "flame.url=https://${COMET_HOSTNAME}"
+      - "traefik.http.routers.comet.middlewares=authelia@docker"
     volumes:
-      - ./data/comet:/app/data
+      - ${DOCKER_DATA_DIR}/comet:/app/data
     healthcheck: 
       test: wget -qO- http://127.0.0.1:2020/health
       interval: 1m
@@ -176,6 +181,7 @@ services:
       - "flame.type=app"
       - "flame.name=MediaFusion"
       - "flame.url=https://${MEDIAFUSION_HOSTNAME}"
+      - "traefik.http.routers.mediafusion.middlewares=authelia@docker"
 
 # Dramatiq is a task queue that will allow you to run tasks in the background. It is used by MediaFusion to scrape sources.
   dramatiq-worker:
@@ -218,10 +224,11 @@ services:
       - "flame.type=app"
       - "flame.name=Stremio-Jackett"
       - "flame.url=https://${STREMIO_JACKETT_HOSTNAME}"
+      - "traefik.http.routers.stremiojackett.middlewares=authelia@docker"
 
 #Jackettio is a service that will allow you to search Jackett requests through Stremio, and then pass them on to your Debrid Service.
   jackettio:
-    image: arvida42/jackettio:latest
+    image: ghcr.io/telkaoss/jackettio:latest
     container_name: jackettio
     restart: unless-stopped
     expose:
@@ -231,7 +238,7 @@ services:
       - JACKETT_API_KEY=${JACKETT_API_KEY:-}
       - TMDB_ACCESS_TOKEN=${TMDB_ACCESS_TOKEN}
     volumes:
-      - ./data/jackettio:/data
+      - ${DOCKER_DATA_DIR}/jackettio:/data
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jackettio.rule=Host(`${JACKETTIO_HOSTNAME}`)"
@@ -240,13 +247,79 @@ services:
       - "flame.type=app"
       - "flame.name=Jackettio"
       - "flame.url=https://${JACKETTIO_HOSTNAME}"
+      - "traefik.http.routers.jackettio.middlewares=authelia@docker"
+
+  anime-kitsu:
+    image: charleeislegend/anime-kitsu:latest #ghcr.io/cedya77/kitsu-anime:latest
+    container_name: kitsu
+    expose:
+      - 7001
+    restart: unless-stopped
+    environment:
+      - PORT=7001
+      - CACHE_MAX_AGE=3600
+      - META_TTL=3600
+      - CATALOG_TTL=1800
+      - REDIS_URL=redis://kitsu_redis:6379
+      - FANART_APIKEY=${FANART_API_KEY?}
+    volumes:
+      - ${DOCKER_DATA_DIR}/anime-kitsu/imdb_mapping.json:/home/node/app/static/data/imdb_mapping.json 
+      - /home/node/app/static/data
+    depends_on:
+       kitsu_redis:
+          condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kitsu.rule=Host(`${KITSU_HOSTNAME?}`)"
+      - "traefik.http.routers.kitsu.entrypoints=websecure"
+      - "traefik.http.routers.kitsu.tls.certresolver=myresolver"
+      - "traefik.http.routers.kitsu.middlewares=authelia@docker"
+
+  kitsu_redis:
+    image: redis:latest
+    container_name: kitsu_redis
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/kitsu/cache:/data
+    command: redis-server --appendonly yes --save 60 1
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5 
+
+  easynews-plus-plus:
+    image: ghcr.io/pantelx/easynews-plus-plus:latest 
+    container_name: easynews-plus-plus
+    restart: unless-stopped
+    expose:
+      - 1337
+    environment:
+      - EASYNEWS_LOG_LEVEL=TRACE
+      - PORT=1337
+      - MAX_RESULTS_PER_PAGE=250
+      - MAX_PAGES=10
+      - TOTAL_MAX_RESULTS=500
+      - CACHE_TTL=6
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - CHATWOOT_ENABLED=false
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.easynews-plus-plus.rule=Host(`${EASYNEWS_PLUS_PLUS_HOSTNAME}`)"
+      - "traefik.http.services.easynews-plus-plus.loadbalancer.server.port=1337"
+      - "traefik.http.routers.easynews-plus-plus.entrypoints=websecure"
+      - "traefik.http.routers.easynews-plus-plus.tls=true"
+      - "traefik.http.routers.easynews-plus-plus.tls.certresolver=myresolver"
+      - "traefik.http.routers.easynews-plus-plus.middlewares=authelia@docker"
+    volumes:
+      - ${DOCKER_DATA_DIR}/easynews-plus-plus/custom-titles.json:/app/custom-titles.json
 
 #==============================================================STREMIO & DEBRID UTILITIES====================================================================
 #This section is for services that are used to manage and monitor Stremio and Debrid services. They won't directly serve content to Stremio, but will help manage and monitor the services that do.
 
 #Stremthru is a service that will allow you to wrap other addons, check debrid cache status, and allow you to proxy addons if required. It will run at http://stremthru:8080
   stremthru:
-    image: muniftanjim/stremthru:latest
+    image: muniftanjim/stremthru
     container_name: stremthru
     restart: unless-stopped
     expose:
@@ -259,13 +332,22 @@ services:
       - STREMTHRU_STORE_TUNNEL=realdebrid:api                   # Only send RD API via tunnel, not all access (e.g playback)
       - STREMTHRU_STORE_CONTENT_PROXY=*:true,easydebrid:false,premiumize:false,torbox:false
       - STREMTHRU_PEER_URI=https://stremthru.13377001.xyz/
-      - STREMTHRU_DATABASE_URI=sqlite://./data/stremthru.db #OLD ONE - STREMTHRU_DATABASE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/stremthru?sslmode=disable
+      - STREMTHRU_DATABASE_URI=sqlite://${DOCKER_DATA_DIR}/stremthru.db #OLD ONE - STREMTHRU_DATABASE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/stremthru?sslmode=disable
       - STREMTHRU_REDIS_URI=redis://garnet:6379
+      - STREMTHRU_FEATURE=${STREMTHRU_FEATURE}
+      - STREMTHRU_BASE_URL=${STREMTHRU_HOSTNAME}
+      - STREMTHRU_INTEGRATION_TRAKT_CLIENT_ID=${STREMTHRU_INTEGRATION_TRAKT_CLIENT_ID}
+      - STREMTHRU_INTEGRATION_TRAKT_CLIENT_SECRET=${STREMTHRU_INTEGRATION_TRAKT_CLIENT_SECRET}
+      - STREMTHRU_LAZY_PEER=true
+      - STREMTHRU_LOG_LEVEL=info
+      - STREMTHRU_INTEGRATION_ANILIST_LIST_STALE_TIME=15m
+      - STREMTHRU_INTEGRATION_MDBLIST_LIST_STALE_TIME=15m
+      - STREMTHRU_INTEGRATION_TRAKT_LIST_STALE_TIME=15m
     depends_on:
       warp:
         condition: service_healthy
     volumes:
-      - ./data/stremthru:/app/data
+      - ${DOCKER_DATA_DIR}/stremthru:/app/data
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.stremthru.rule=Host(`${STREMTHRU_HOSTNAME}`) || Host(`${STREMTHRU_HOSTNAME_2}`)"
@@ -275,6 +357,7 @@ services:
       - "flame.type=app"
       - "flame.name=StremThru"
       - "flame.url=https://${STREMTHRU_HOSTNAME}"
+      - "traefik.http.routers.stremthru.middlewares=authelia@docker"
 
 # Stremio Addon Manager is a service that will allow you to rename, reorder, and edit the settings of your Stremio addons.
   addon-manager:
@@ -291,6 +374,7 @@ services:
       - "flame.type=app"
       - "flame.name=Stremio Addon Manager"
       - "flame.url=https://${ADDON_MANAGER_HOSTNAME}"
+      - "traefik.http.routers.addon-manager.middlewares=authelia@docker"
 
   # Mediaflow Proxy service that will proxy stream and video content requests to the VPS. This allows for multiple devices to appear as using a single IP address. 
   mediaflow-proxy:
@@ -351,7 +435,7 @@ services:
     expose:
       - 9696
     volumes:
-      - ./data/prowlarr:/config
+      - ${DOCKER_DATA_DIR}/prowlarr:/config
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -373,7 +457,7 @@ services:
     expose:
       - 9117
     volumes:
-      - ./data/jackett:/config
+      - ${DOCKER_DATA_DIR}/jackett:/config
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -393,7 +477,7 @@ services:
 # NZBHydra2 is a service that will allow you to manage your Usenet indexers.
   nzbhydra2:
     container_name: nzbhydra2
-    image: ghcr.io/hotio/nzbhydra2:latest
+    image: ghcr.io/hotio/nzbhydra2:latest #:release-9a962c2 for last "stable" torbox release
     expose:
       - 5076
     environment:
@@ -402,16 +486,13 @@ services:
       - UMASK=002
       - TZ=${TZ:-UTC} 
     volumes:
-      - ./data/nzbhydra:/config
+      - ${DOCKER_DATA_DIR}/nzbhydra:/config
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nzbhydra2.rule=Host(`${NZBHYDRA2_HOSTNAME}`)"
       - "traefik.http.routers.nzbhydra2.entrypoints=websecure"
       - "traefik.http.routers.nzbhydra2.tls.certresolver=myresolver"
-      - "flame.type=app"
-      - "flame.name=NZBHydra2"
-      - "flame.url=https://${NZBHYDRA2_HOSTNAME}"
 
 # Seanime is a streaming server that will allow you to stream anime from your own collection or from a debrid service.
   seanime:
@@ -421,7 +502,7 @@ services:
     volumes:
       - /mnt/user/anime:/anime
       - /mnt/user/downloads:/downloads
-      - ./data/seanime:/root/.config/Seanime
+      - ${DOCKER_DATA_DIR}/seanime:/root/.config/Seanime
     expose:
       - 43211
     restart: unless-stopped
@@ -430,8 +511,7 @@ services:
       - "traefik.http.routers.seanime.rule=Host(`${SEANIME_HOSTNAME}`)"
       - "traefik.http.routers.seanime.entrypoints=websecure"
       - "traefik.http.routers.seanime.tls.certresolver=myresolver"
-      - "traefik.http.routers.seanime.middlewares=seanime-auth"
-      - "traefik.http.middlewares.seanime-auth.basicauth.users=${SEANIME_USERNAME}:${SEANIME_HASHED_PASSWORD}"
+      - "traefik.http.routers.seanime.middlewares=authelia@docker"
       - "flame.type=app"
       - "flame.name=Seanime"
       - "flame.url=https://${SEANIME_HOSTNAME}"
@@ -441,6 +521,57 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+
+  torbox-manager:
+      image: charleeislegend/torbox-manager:latest
+      container_name: torbox-manager
+      expose:
+        - 3000
+      restart: unless-stopped
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.tbm.rule=Host(`${TORBOX_MANAGER_HOSTNAME?}`)"
+        - "traefik.http.routers.tbm.entrypoints=websecure"
+        - "traefik.http.routers.tbm.tls.certresolver=myresolver"
+        - "traefik.http.routers.tbm.middlewares=authelia@docker"
+
+  torbox-media-center:
+      image: anonymoussystems/torbox-media-center:main
+      container_name: torbox-media-center
+      stdin_open: true
+      tty: true
+      restart: unless-stopped
+      volumes:
+            - /mnt/media:/torbox
+      environment:
+            - TORBOX_API_KEY=${TORBOX_API_KEY}
+            - MOUNT_METHOD=strm
+            - MOUNT_PATH=/torbox
+      #cap_add:
+      #  - SYS_ADMIN
+      #devices:
+      #  - /dev/fuse
+  
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    restart: unless-stopped
+    container_name: jellyfin
+    expose:
+      - 8096
+    environment:
+      - TZ=${TZ:-UTC}
+      - PUID=0
+      - PGID=0
+    volumes:
+      - ${DOCKER_DATA_DIR}/jellyfin:/config
+      - /mnt:/mnt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin.rule=Host(`${JELLYFIN_HOSTNAME?}`)"
+      - "traefik.http.routers.jellyfin.tls=true"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+      - "traefik.http.routers.jellyfin.tls.certresolver=myresolver"
+      
 
 # ==============================================================DOCKER SERVER UTILITIES AND DATABASES====================================================================
 
@@ -452,7 +583,7 @@ services:
     environment:
       - LOG_LEVEL=INFO
     volumes:
-      - ./data/byparr/screenshots:/app/screenshots # For screenshots when exception occurs
+      - ${DOCKER_DATA_DIR}/byparr/screenshots:/app/screenshots # For screenshots when exception occurs
     healthcheck:
       test: "curl -f http://localhost:8191/health"
       interval: 3600s
@@ -487,7 +618,7 @@ services:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv4.conf.all.src_valid_mark=1
     volumes:
-      - ./data/warp:/var/lib/cloudflare-warp
+      - ${DOCKER_DATA_DIR}/warp:/var/lib/cloudflare-warp
     healthcheck:
       test: curl -x "socks5h://127.0.0.1:1080" -fsSL "https://www.cloudflare.com/cdn-cgi/trace" | grep -qE "warp=(plus|on)" || exit 1
       interval: 15s
@@ -544,7 +675,7 @@ services:
 
 # Garnet is a Redis server that is used as a drop-in replacement for the default Redis server. It is used by Stremthru, and optionally by MediaFusion.
   garnet:
-    image: 'ghcr.io/microsoft/garnet'
+    image: 'ghcr.io/microsoft/garnet:latest'
     container_name: garnet
     #hostname: redis # Use this if you want to use the hostname "redis" for the container and completely run without Redis.
     # command: # These are required if you want to run without Redis.
@@ -566,7 +697,7 @@ services:
     container_name: watchtower
     restart: unless-stopped
     environment:
-      TZ: ${TZ:-UTC}  
+      TZ: America/New_York  
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_NOTIFICATION_REPORT: "true"
       WATCHTOWER_SCHEDULE: ${AUTO_UPDATE_SCHEDULE:-0 0 6 * * *} # Run at 6am daily
@@ -597,32 +728,134 @@ services:
   
   # Traefik is a reverse proxy that will handle SSL certificates and routing for all services and containers.
   traefik:
-    image: traefik:v3
-    container_name: traefik
-    restart: unless-stopped
-    ports:
-      - 443:443
-      #- 80:80  # minecraft required port
-      - 127.0.0.1:8080:8080
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      #- "--entryPoints.web.address=:80"  # minecraft required port
-      - "--entryPoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--log.level=INFO"
-      - "--ping"
+      image: traefik:v3
+      container_name: traefik
+      restart: unless-stopped
+      environment:
+        - TZ=${TZ:-UTC}
+      ports:
+        - 443:443
+        - 80:80
+        - 8448:8448
+      command:
+        - '--api=true'
+        - '--api.dashboard=true'
+        - '--api.insecure=false'
+        - '--global.sendAnonymousUsage=false'
+        - '--global.checkNewVersion=false'
+        - '--log=true'
+        - '--log.level=DEBUG'
+        - "--providers.docker=true"
+        - "--providers.docker.exposedbydefault=false"
+        #- "--providers.docker.network=${DOCKER_NETWORK?}"
+        - "--accesslog=true"
+        - "--accesslog.format=json"
+    
+        - "--entryPoints.web.address=:80"
+        - "--entryPoints.websecure.address=:443"
+
+        #Synapse
+        - "--entrypoints.federation.address=:8448"
+        
+        - "--entryPoints.web.forwardedHeaders.insecure=false"
+        - "--entryPoints.web.proxyProtocol.insecure=false"
+
+        - "--entryPoints.web.http.redirections.entryPoint.to=websecure"
+        - "--entryPoints.web.http.redirections.entryPoint.scheme=https"
+        - "--entryPoints.web.forwardedHeaders.trustedIPs=${TRUSTED_IPS}"
+        - "--entryPoints.web.proxyProtocol.trustedIPs=${TRUSTED_IPS}"
+
+
+        - "--entryPoints.websecure.forwardedHeaders.insecure=false"
+        - "--entryPoints.websecure.proxyProtocol.insecure=false"
+        - "--entryPoints.websecure.forwardedHeaders.trustedIPs=${TRUSTED_IPS}"
+        - "--entryPoints.websecure.proxyProtocol.trustedIPs=${TRUSTED_IPS}"
+
+        - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+        - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL?}"
+        - "--certificatesresolvers.myresolver.acme.storage=/config/acme.json"
+        - "--log.level=INFO"
+        - "--ping"
+      volumes:
+        - "/var/run/docker.sock:/var/run/docker.sock"
+        - "${DOCKER_DATA_DIR}/traefik:/config"
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.api.rule=Host(`${TRAEFIK_HOSTNAME?}`)"
+        - "traefik.http.routers.api.entrypoints=websecure"
+        - "traefik.http.routers.api.tls.certresolver=myresolver"
+        - "traefik.http.routers.api.service=api@internal"
+        - "traefik.http.routers.api.middlewares=authelia@docker"
+      healthcheck:
+        test: ["CMD", "traefik", "healthcheck", "--ping"]
+        interval: 10s
+        timeout: 5s
+        retries: 3
+      depends_on:
+        authelia:
+          condition: service_healthy
+  
+  authelia:
+    container_name: 'authelia'
+    image: 'authelia/authelia'
+    restart: 'unless-stopped'
+    user: $PUID:$PGID
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      X_AUTHELIA_CONFIG_FILTERS: template
+      TEMPLATE_AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET?}
+      TEMPLATE_DOMAIN: ${DOMAIN?}
+      TEMPLATE_AUTHELIA_HOSTNAME: ${AUTHELIA_HOSTNAME?}
+      TEMPLATE_AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY?}
+      TEMPLATE_AUTHELIA_WEBAUTHN_DISPLAY_NAME: ${AUTHELIA_WEBAUTHN_DISPLAY_NAME?}
+      TEMPLATE_AUTHELIA_JWT_SECRET: ${AUTHELIA_JWT_SECRET?}
+      TEMPLATE_STREMIO_ADDON_HOSTNAMES: ${STREMIO_ADDON_HOSTNAMES?}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authelia.rule=Host(`${AUTHELIA_HOSTNAME?}`)"
+      - "traefik.http.routers.authelia.entryPoints=websecure"
+      - "traefik.http.routers.authelia.tls.certresolver=myresolver"
+      - "traefik.http.services.authelia.loadbalancer.server.port=9091"
+      - "traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/authz/forward-auth"
+      - "traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./data/letsencrypt:/letsencrypt"
+      - ${DOCKER_DATA_DIR}/authelia/config:/config
+    depends_on:
+      authelia_redis:
+        condition: service_healthy
+      authelia_postgres:
+        condition: service_healthy
+  
+  authelia_redis:
+    image: redis:latest
+    container_name: authelia_redis
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/authelia/cache:/data
+    command: redis-server --appendonly yes --save 60 1
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+
+  authelia_postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    container_name: authelia_postgres
+    volumes:
+      -  ${DOCKER_DATA_DIR}/authelia/db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: authelia
+      POSTGRES_PASSWORD: authelia
+      POSTGRES_DB: authelia
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authelia -d authelia"]
+      start_period: 1m
+      interval: 20s
+      timeout: 5s
+      retries: 5
 
 # ==============================================================SERVER DASHBOARDS AND METRICS====================================================================
 
@@ -643,11 +876,11 @@ services:
       - "traefik.http.routers.dozzle.rule=Host(`${DOZZLE_HOSTNAME}`)"
       - "traefik.http.routers.dozzle.entrypoints=websecure"
       - "traefik.http.routers.dozzle.tls.certresolver=myresolver"
-      - "traefik.http.routers.dozzle.middlewares=dozzle-auth"
-      - "traefik.http.middlewares.dozzle-auth.basicauth.users=${DOZZLE_USERNAME}:${DOZZLE_HASHED_PASSWORD}"
       - "flame.type=app"
       - "flame.name=Dozzle"
       - "flame.url=https://${DOZZLE_HOSTNAME}"
+      - "traefik.http.routers.dozzle.middlewares=authelia@docker"
+
     healthcheck:
       test: ["CMD", "/dozzle", "healthcheck"]
       interval: 3s
@@ -670,15 +903,18 @@ services:
       - "traefik.http.routers.status-page.rule=Host(`${STATUS_PAGE_HOSTNAME}`)"
       - "traefik.http.routers.status-page.entrypoints=websecure"
       - "traefik.http.routers.status-page.tls.certresolver=myresolver"
+      - "traefik.http.routers.funpage-page.rule=Host(`${FUN_PAGE_HOSTNAME}`) || Host(`${FUN_PAGE_HOSTNAME2}`)"
+      - "traefik.http.routers.funpage-page.entrypoints=websecure"
+      - "traefik.http.routers.funpage-page.tls.certresolver=myresolver"
       - "flame.type=app"
       - "flame.name=Uptime Kuma"
       - "flame.url=https://${UPTIME_KUMA_HOSTNAME}"
     volumes:
-      - ./data/kuma:/app/data
+      - ${DOCKER_DATA_DIR}/kuma:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
 
 
-# Honey is a dashboard for launching services. It's more basic but looks nicer and is easier to use than Flame. It will have  a config.json file in the ./data/honey directory.
+# Honey is a dashboard for launching services. It's more basic but looks nicer and is easier to use than Flame. It will have  a config.json file in the ${DOCKER_DATA_DIR}/honey directory.
   honey:
     image: ghcr.io/dani3l0/honey:latest
     container_name: honey
@@ -686,7 +922,7 @@ services:
     ports:
       - "4173:4173"
     volumes:
-      - ./data/honey:/app/dist/config
+      - ${DOCKER_DATA_DIR}/honey:/app/dist/config
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.honey.rule=Host(`${HONEY_HOSTNAME}`)"
@@ -695,24 +931,25 @@ services:
       - "flame.type=app"
       - "flame.name=Honey"
       - "flame.url=https://${HONEY_HOSTNAME}"
+      - "traefik.http.routers.honey.middlewares=authelia@docker"
 
-## Start page for your server with links to all services. Alternative to Honey
-#  flame:
-#    image: pawelmalak/flame:multiarch
-#    container_name: flame
-#    restart: unless-stopped
-#    expose:
-#      - 5005
-#    environment:
-#      - PASSWORD=${FLAME_PASSWORD}
-#    labels:
-#      - "traefik.enable=true"
-#      - "traefik.http.routers.flame.rule=Host(`${FLAME_HOSTNAME}`)"
-#      - "traefik.http.routers.flame.entrypoints=websecure"
-#      - "traefik.http.routers.flame.tls.certresolver=myresolver"
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock
-#      - ./data/flame:/app/data
+# Start page for your server with links to all services. Alternative to Honey
+  flame:
+    image: pawelmalak/flame:multiarch
+    container_name: flame
+    restart: unless-stopped
+    expose:
+      - 5005
+    environment:
+      - PASSWORD=${FLAME_PASSWORD}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flame.rule=Host(`${FLAME_HOSTNAME}`)"
+      - "traefik.http.routers.flame.entrypoints=websecure"
+      - "traefik.http.routers.flame.tls.certresolver=myresolver"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_DATA_DIR}/flame:/app/data
   
   # Dashdot is a dashboard for monitoring basic server stats. 
   dash:
@@ -720,8 +957,8 @@ services:
     container_name: dashdot
     restart: unless-stopped
     privileged: true
-    ports:
-      - '80:3001'
+    expose:
+      - 3001
     volumes:
       - /:/mnt/host:ro
     environment:
@@ -737,183 +974,561 @@ services:
       - "flame.type=app"
       - "flame.name=dash"
       - "flame.url=https://${DASH_HOSTNAME}"
+      - "traefik.http.routers.dash.middlewares=authelia@docker"
 
+  librespeed:
+    image: ghcr.io/librespeed/speedtest:latest
+    container_name: librespeed
+    restart: unless-stopped
+    expose:
+      - 8080
+    environment:
+      MODE: standalone
+      TITLE: ${LIBRESPEED_TITLE:-LibreSpeed}
+      TELEMETRY: "false"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.librespeed.rule=Host(`${LIBRESPEED_HOSTNAME?}`)"
+      - "traefik.http.routers.librespeed.entrypoints=websecure"
+      - "traefik.http.routers.librespeed.tls.certresolver=myresolver"
+      - "traefik.http.services.librespeed.loadbalancer.server.port=8080"
+    volumes:
+      - ${DOCKER_DATA_DIR}/librespeed:/database
+
+  speedtest-tracker:
+    image: lscr.io/linuxserver/speedtest-tracker:latest
+    container_name: speedtest-tracker
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ:-Etc/UTC}
+      - DISPLAY_TIMEZONE=${TZ:-Etc/UTC}
+      - APP_KEY=${APP_KEY?}
+      - DB_CONNECTION=sqlite
+      - PUBLIC_DASHBOARD=true
+      - APP_URL=https://${SPEEDTEST_TRACKER_HOSTNAME?}
+      - ASSET_URL=https://${SPEEDTEST_TRACKER_HOSTNAME?}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.speedtest-tracker.rule=Host(`${SPEEDTEST_TRACKER_HOSTNAME?}`)"
+      - "traefik.http.routers.speedtest-tracker.entrypoints=websecure"
+      - "traefik.http.routers.speedtest-tracker.tls.certresolver=myresolver"
+      - "traefik.http.routers.speedtest-tracker.middlewares=authelia@docker"
+      - "traefik.http.services.speedtest-tracker.loadbalancer.server.port=80"
+    volumes:
+      - ${DOCKER_DATA_DIR}/speedtest-tracker:/config
+  
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: ntfy
+    command:
+      - serve
+    environment:
+      - TZ=${TZ}    # optional: Change to your desired timezone
+    user: ${PUID}:${PGID} # optional: Set custom user/group or uid/gid
+    volumes:
+      - ${DOCKER_DATA_DIR}/ntfy/var/cache/ntfy:/var/cache/ntfy
+      - ${DOCKER_DATA_DIR}/ntfy/etc/ntfy:/etc/ntfy
+    expose:
+      - 80
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ntfy.rule=Host(`${NTFY_HOSTNAME?}`)"
+      - "traefik.http.routers.ntfy.entrypoints=websecure"
+      - "traefik.http.routers.ntfy.tls.certresolver=myresolver"
+      #- "traefik.http.routers.ntfy.middlewares=authelia@docker"
+      - "traefik.http.services.ntfy.loadbalancer.server.port=80"
+  
+  apprise-api:
+    image: lscr.io/linuxserver/apprise-api:latest
+    container_name: apprise-api
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=America/New_York
+      - APPRISE_ATTACH_SIZE=0 #optional
+    volumes:
+      - ${DOCKER_DATA_DIR}/appriseapi/config:/config
+      - ${DOCKER_DATA_DIR}/appriseapi/attachments:/attachments #optional
+    expose:
+      - 8000
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.apprise-api.rule=Host(`${APPRISE_API_HOSTNAME?}`)"
+      - "traefik.http.routers.apprise-api.entrypoints=websecure"
+      - "traefik.http.routers.apprise-api.tls.certresolver=myresolver"
+      #- "traefik.http.routers.apprise-api.middlewares=authelia@docker"
+      - "traefik.http.services.apprise-api.loadbalancer.server.port=8000"
+  
+  borgmatic:
+    image: ghcr.io/borgmatic-collective/borgmatic:latest
+    container_name: borgmatic
+    restart: unless-stopped
+
+    volumes:
+      #- /opt/docker:/mnt/source:ro  # 🔍 Maps your entire stack (read-only) as the backup source
+      - /home/ubuntu/mediaserver:/mnt/source:ro  # 🔍 Maps your entire stack (read-only) as the backup source
+      - ${DOCKER_DATA_DIR}/borgmatic:/etc/borgmatic  # ⚙️ Config folder (holds config.yaml + .env)
+      - ${DOCKER_DATA_DIR}/borgmatic/.ssh:/root/.ssh  # 🔐 SSH key pair for BorgBase access
+      - ${DOCKER_DATA_DIR}/borgmatic/repo:/mnt/borg-repository  # 💾 Optional local repo folder (not used)
+      - ${DOCKER_DATA_DIR}/borgmatic/borg:/root/.config/borg  # 🧠 Borg key and config files
+      - ${DOCKER_DATA_DIR}/borgmatic/cache:/root/.cache/borg  # ⚡ Cache for deduplication and performance
+
+    environment:
+      - TZ=America/New_York  # 🌍 Timezone from main .env
+      - PUID=${PUID}  # 👤 Your user ID (for file permissions)
+      - PGID=${PGID}  # 👥 Your group ID
+      - BORG_PASSPHRASE=${BORG_PASSPHRASE}  # 🔐 Secure passphrase (don't hardcode in config.yaml)
+      - BORG_REPO_URL=${BORG_REPO_URL}  # 📦 BorgBase SSH repository path
+      - BACKUP_CRON=${BACKUP_CRON}  # 🕓 Weekly backup: Every Sunday at 4 AM
+      - RUN_ON_STARTUP=true   # 🚀 Trigger a backup when the container starts
+  
+  arcane:
+    image: ghcr.io/ofkm/arcane:latest
+    container_name: arcane
+    restart: unless-stopped
+    expose:
+      - 3000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.arcane.rule=Host(`${ARCANE_HOSTNAME?}`)"
+      - "traefik.http.routers.arcane.entrypoints=websecure"
+      - "traefik.http.routers.arcane.tls.certresolver=myresolver"
+      - "traefik.http.services.arcane.loadbalancer.server.port=3000"
+      - "traefik.http.routers.arcane.middlewares=authelia@docker"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_DATA_DIR}/arcane:/app/data
+    environment:
+      - APP_ENV=production
+      - PUID=${PUID}
+      - PGID=${PGID}
+      # Session secret - generate with: openssl rand -base64 32
+      - PUBLIC_SESSION_SECRET=ZAvZyCPVaIJK63loSssKgOI2/BCbHzcM+Fpy+Oli3pY=
 
 # ==============================================================OPTIONAL SERVICES & EXTRA FUN GOODIES====================================================================
 
-# #Matrix is a chat service that will allow you to chat with others. It provides end-to-end encryption and is a great alternative to Discord.
-# #Synapse is the homeserver implementation for the Matrix Protocol.
-# #This has a very complex setup, and I'd recommend following https://docs.techdox.nz/matrix/ to set it up.
-# #TLDR: Generate the Matrix Config at Step 3, by running "docker run -it --rm -v ./data/synapse:/data -e SYNAPSE_SERVER_NAME=matrix.yourdomain.com -e SYNAPSE_REPORT_STATS=yes matrixdotorg/synapse:latest generate"
-# #Then edit the resulting homeserver.yaml file to add your domain and other settings according to the guide from the sample file down.
-# #Lastly after the homeserver.yaml file is set up, run "docker exec -it synapse register_new_matrix_user -u YOURUSERNAMEHERE -p YOURPASSWORDHERE -a -c /data/homeserver.yaml http://localhost:8008" while the container is up to set up your admin account. 
-#   synapse:
-#     container_name: synapse
-#     image: matrixdotorg/synapse:latest
-#     restart: unless-stopped
-#     volumes:
-#       - ./data/synapse:/data
-#     labels:
-#       - "traefik.enable=true"
-#       - "traefik.http.routers.synapse.rule=Host(`${MATRIX_HOSTNAME}`)"
-#       - "traefik.http.routers.synapse.entrypoints=websecure"
-#       - "traefik.http.routers.synapse.tls.certresolver=myresolver"
+#Matrix is a chat service that will allow you to chat with others. It provides end-to-end encryption and is a great alternative to Discord.
+#Synapse is the homeserver implementation for the Matrix Protocol.
+#This has a very complex setup, and I'd recommend following https://docs.techdox.nz/matrix/ to set it up.
+#TLDR: Generate the Matrix Config at Step 3, by running "docker run -it --rm -v ${DOCKER_DATA_DIR}/synapse:/data -e SYNAPSE_SERVER_NAME=matrix.yourdomain.com -e SYNAPSE_REPORT_STATS=yes matrixdotorg/synapse:latest generate"
+#Then edit the resulting homeserver.yaml file to add your domain and other settings according to the guide from the sample file down.
+#Lastly after the homeserver.yaml file is set up, run "docker exec -it synapse register_new_matrix_user -u YOURUSERNAMEHERE -p YOURPASSWORDHERE -a -c /data/homeserver.yaml http://localhost:8008" while the container is up to set up your admin account. 
+  synapse:
+    container_name: synapse
+    image: matrixdotorg/synapse:latest
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/synapse:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.synapse.rule=Host(`${MATRIX_HOSTNAME}`)"
+      - "traefik.http.routers.synapse.entrypoints=websecure"
+      - "traefik.http.routers.synapse.tls.certresolver=myresolver"
+      # Federation endpoint configuration
+      - "traefik.http.routers.synapse-fed.rule=Host(`${MATRIX_HOSTNAME}`)"
+      - "traefik.http.routers.synapse-fed.entrypoints=federation"
+      - "traefik.http.routers.synapse-fed.tls.certresolver=myresolver"
+      - "traefik.http.services.synapse-fed.loadbalancer.server.port=8008"
+
+  thelounge:
+    image: ghcr.io/thelounge/thelounge:latest
+    container_name: thelounge
+    #ports:
+    #  - "9000:9000"
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/thelounge:/var/opt/thelounge # uses a named volume on the host
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.thelounge.rule=Host(`${THELOUNGE_HOSTNAME}`)"
+      - "traefik.http.routers.thelounge.entrypoints=websecure"
+      - "traefik.http.routers.thelounge.tls.certresolver=myresolver"
+     # - "traefik.http.routers.thelounge.middlewares=authelia@docker"
+
 
 #Chibisafe is a file hosting service that will allow you to upload files to your server, and share them with others.
 #YOU MUST ALSO INSTALL ffmpeg ON YOUR HOST MACHINE FOR THIS TO WORK. Run sudo apt install ffmpeg to install it.
-  # chibisafe:
-  #   image: chibisafe/chibisafe:latest
-  #   container_name: chibisafe
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ./data/chibisafe/database:/home/node/chibisafe/database:rw
-  #     - ./data/chibisafe/uploads:/home/node/chibisafe/uploads:rw
-  #     - ./data/chibisafe/logs:/home/node/chibisafe/logs:rw
-  #   environment:
-  #     - CHIBISAFE_LOG_LEVEL=Error
-  #     - BASE_API_URL=http://chibisafe-server:8000
-  #     - CDN_URL=https://${CHIBISAFE_CDN_HOSTNAME}
-  #     - DOMAIN=${CHIBISAFE_HOSTNAME}
-  #     - UPLOADS_FOLDER=/home/node/chibisafe/uploads
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.chibisafe.rule=Host(`${CHIBISAFE_HOSTNAME}`) && !PathPrefix(`/api`) && !PathPrefix(`/docs`)"
-  #     - "traefik.http.routers.chibisafe.entrypoints=websecure"
-  #     - "traefik.http.routers.chibisafe.tls.certresolver=myresolver"
-  #     - "flame.type=app"
-  #     - "flame.name=chibisafe"
-  #     - "flame.url=https://${CHIBISAFE_HOSTNAME}"
+  chibisafe:
+    image: chibisafe/chibisafe:latest
+    container_name: chibisafe
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/chibisafe/database:/home/node/chibisafe/database:rw
+      - ${DOCKER_DATA_DIR}/chibisafe/uploads:/home/node/chibisafe/uploads:rw
+      - ${DOCKER_DATA_DIR}/chibisafe/logs:/home/node/chibisafe/logs:rw
+    environment:
+      - CHIBISAFE_LOG_LEVEL=Error
+      - BASE_API_URL=http://chibisafe-server:8000
+      - CDN_URL=https://${CHIBISAFE_CDN_HOSTNAME}
+      - DOMAIN=${CHIBISAFE_HOSTNAME}
+      - UPLOADS_FOLDER=/home/node/chibisafe/uploads
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.chibisafe.rule=Host(`${CHIBISAFE_HOSTNAME}`) && !PathPrefix(`/api`) && !PathPrefix(`/docs`)"
+      - "traefik.http.routers.chibisafe.entrypoints=websecure"
+      - "traefik.http.routers.chibisafe.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=chibisafe"
+      - "flame.url=https://${CHIBISAFE_HOSTNAME}"
   
-  # chibisafe-server:
-  #   image: chibisafe/chibisafe-server:latest
-  #   container_name: chibisafe-server
-  #   environment:
-  #     - ADMIN_PASSWORD=${CHIBISAFE_ADMIN_PASSWORD}
-  #   volumes:
-  #     - ./data/chibisafe/database:/app/database:rw
-  #     - ./data/chibisafe/uploads:/app/uploads:rw
-  #     - ./data/chibisafe/logs:/app/logs:rw
-  #   expose:
-  #     - 8000
-  #   restart: unless-stopped
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.services.chibisafe-server-service.loadbalancer.server.port=8000"
-  #     - "traefik.http.routers.chibisafe-server.entrypoints=websecure"
-  #     - "traefik.http.routers.chibisafe-server.tls.certresolver=myresolver"
-  #     - "traefik.http.routers.chibisafe-server.rule=Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/api`) || PathPrefix(`/docs`)"
-  #     - "traefik.http.routers.chibisafe-server.service=chibisafe-server"
-  #     - "traefik.http.routers.chibisafe-server.service=chibisafe-server-service"
+  chibisafe-server:
+    image: chibisafe/chibisafe-server:latest
+    container_name: chibisafe-server
+    environment:
+      - ADMIN_PASSWORD=${CHIBISAFE_ADMIN_PASSWORD}
+    volumes:
+      - ${DOCKER_DATA_DIR}/chibisafe/database:/app/database:rw
+      - ${DOCKER_DATA_DIR}/chibisafe/uploads:/app/uploads:rw
+      - ${DOCKER_DATA_DIR}/chibisafe/logs:/app/logs:rw
+    expose:
+      - 8000
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.chibisafe-server-service.loadbalancer.server.port=8000"
+      - "traefik.http.routers.chibisafe-server.entrypoints=websecure"
+      - "traefik.http.routers.chibisafe-server.tls.certresolver=myresolver"
+      - "traefik.http.routers.chibisafe-server.rule=Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/api`) || Host(`${CHIBISAFE_HOSTNAME}`) && PathPrefix(`/docs`)"
+      - "traefik.http.routers.chibisafe-server.service=chibisafe-server"
+      - "traefik.http.routers.chibisafe-server.service=chibisafe-server-service"
 
-  # chibisafe-cdn:
-  #   image: nginx:alpine
-  #   container_name: chibisafe-cdn
-  #   volumes:
-  #     - ./data/chibisafe/uploads:/usr/share/nginx/html:ro
-  #   restart: unless-stopped
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.services.chibisafe-cdn-service.loadbalancer.server.port=80"
-  #     - "traefik.http.routers.chibisafe-cdn.entrypoints=websecure"
-  #     - "traefik.http.routers.chibisafe-cdn.tls.certresolver=myresolver"
-  #     - "traefik.http.routers.chibisafe-cdn.rule=Host(`${CHIBISAFE_CDN_HOSTNAME}`)"
-  #     - "traefik.http.routers.chibisafe-cdn.service=chibisafe-cdn-service"
-      
+
+  chibisafe-cdn:
+    image: nginx:alpine
+    container_name: chibisafe-cdn
+    volumes:
+      - ${DOCKER_DATA_DIR}/chibisafe/uploads:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.chibisafe-cdn-service.loadbalancer.server.port=80"
+      - "traefik.http.routers.chibisafe-cdn.entrypoints=websecure"
+      - "traefik.http.routers.chibisafe-cdn.tls.certresolver=myresolver"
+      - "traefik.http.routers.chibisafe-cdn.rule=Host(`${CHIBISAFE_CDN_HOSTNAME}`)"
+      - "traefik.http.routers.chibisafe-cdn.service=chibisafe-cdn-service"
+
+
 
   # If having issues with Warp, you can try gluetun as an alternative using ProtonVPN (free) 
-  # gluetun:
-  #    image: qmcgaw/gluetun
-  #    container_name: gluetun
-  #    restart: unless-stopped
-  #    cap_add:
-  #      - NET_ADMIN
-  #    devices:
-  #      - /dev/net/tun:/dev/net/tun
-  #    ports:
-  #      - 127.0.0.1:8888:8888/tcp # HTTP proxy
-  #    environment:
-  #      - VPN_SERVICE_PROVIDER=protonvpn
-  #      - VPN_TYPE=wireguard
-  #      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-  #      #- SERVER_COUNTRIES=United_States
-  #      - FREE_ONLY=true
-  #      # Server list updater
-  #      # See https://github.com/qdm12/gluetun-wiki/blob/main/setup/servers.md#update-the-vpn-servers-list
-  #      - UPDATER_PERIOD=24h
-  #      - HTTPPROXY=on
-  #      - HTTPPROXY_LISTENING_ADDRESS=:8888
-  #      - HTTPPROXY_STEALTH=on
-  #    volumes:
-  #      - gluetun-data:/gluetun
-  #    healthcheck:
-  #      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
-  #      interval: 60s
-  #      timeout: 5s
-  #      retries: 3
-  #      start_period: 1m
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    env_file:
+      - .env
+    volumes:
+      - ${DOCKER_DATA_DIR}/gluetun:/gluetun
+    healthcheck:
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 1m
 
-## If you want to run a Minecraft server, this image will allow you to run it. It *DOES NOT* use Traefik, so you must port forward port 25565 manually. 
-## On Oracle, where you port forward normally, port forward TCP and UDP with the destination port as 25565.
-#  minecraft:
-#    image: itzg/minecraft-server:latest
-#    container_name: minecraft
-#    restart: unless-stopped
-#    ports:
-#      - "25565:25565"
-#    environment:
-#      EULA: "TRUE"
-#      TYPE: "PAPER"
-#      MEMORY: "4G"
-#      MAX_PLAYERS: "10"
-#      ICON: ${MINECRAFT_ICON}
-#      OVERRIDE_ICON: "true"
-#      TZ: ${TZ:-"America/New_York"}
-#      DIFFICULTY: "2"
-#      FORCE_GAMEMODE: "true"
-#      LEVEL_TYPE: "amplified"
-#      SPAWN_PROTECTION: "1"
-#     ENABLE_WHITELIST: "false"
-#      ENABLE_ROLLING_LOGS: "true"
-#      LOG_TIMESTAMP: "true"
-#    volumes:
-#      - "./data/minecraft:/data"
+  # Use Gost as a proxy because its better.
+  gost:
+    image: ginuerzh/gost
+    container_name: gost
+    restart: unless-stopped
+    network_mode: service:gluetun
+    command: "-L :8080"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+
+# If you want to run a Minecraft server, this image will allow you to run it. It *DOES NOT* use Traefik, so you must port forward port 25565 manually. 
+# On Oracle, where you port forward normally, port forward TCP and UDP with the destination port as 25565.
+  minecraft:
+    image: itzg/minecraft-server:latest
+    container_name: minecraft
+    restart: unless-stopped
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: "PAPER"
+      MEMORY: "4G"
+      MAX_PLAYERS: "10"
+      ICON: ${MINECRAFT_ICON}
+      OVERRIDE_ICON: "true"
+      TZ: ${TZ:-"America/New_York"}
+      DIFFICULTY: "2"
+      FORCE_GAMEMODE: "true"
+      LEVEL_TYPE: "amplified"
+      SPAWN_PROTECTION: "1"
+      ENABLE_WHITELIST: "false"
+      ENABLE_ROLLING_LOGS: "true"
+      LOG_TIMESTAMP: "true"
+    volumes:
+      - "${DOCKER_DATA_DIR}/minecraft:/data"
+  
+  dockge:
+    image: louislam/dockge:1
+    container_name: dockge
+    restart: unless-stopped
+    #ports:
+    #  - 5001:5001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_DATA_DIR}/dockge:/app/data
+      # Stacks Directory
+      # ⚠️ READ IT CAREFULLY. If you did it wrong, your data could end up writing into a WRONG PATH.
+      # ⚠️ 1. FULL path only. No relative path (MUST)
+      # ⚠️ 2. Left Stacks Path === Right Stacks Path (MUST)
+      - /opt/stacks:/opt/stacks
+    environment:
+      # Tell Dockge where to find the stacks
+      - DOCKGE_STACKS_DIR=/opt/stacks
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dockge.rule=Host(`${DOCKGE_HOSTNAME}`)"
+      - "traefik.http.routers.dockge.entrypoints=websecure"
+      - "traefik.http.routers.dockge.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=dockge"
+      - "flame.url=https://${DOCKGE_HOSTNAME}"
 
 #Vaultwarden is a password manager that will allow you to store your passwords securely. It's a self-hosted alternative to Bitwarden.
-#   vaultwarden:
-#     image: vaultwarden/server:latest
-#     container_name: vaultwarden
-#     restart: unless-stopped
-#     expose:
-#       - 80
-#     environment:
-#       DOMAIN: "https://${VAULTWARDEN_HOSTNAME?}"
-#     volumes:
-#       - ./data/vaultwarden:/data/
-#     labels:
-#       - "traefik.enable=true"
-#       - "traefik.http.routers.vaultwarden.rule=Host(`${VAULTWARDEN_HOSTNAME?}`)"
-#       - "traefik.http.routers.vaultwarden.entrypoints=websecure"
-#       - "traefik.http.routers.vaultwarden.tls.certresolver=myresolver"
-#       - "flame.type=app"
-#       - "flame.name=Vaultwarden"
-#       - "flame.url=https://${VAULTWARDEN_HOSTNAME?}"
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    expose:
+      - 80
+    environment:
+      DOMAIN: "https://${VAULTWARDEN_HOSTNAME?}"
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN}
+    volumes:
+      - ${DOCKER_DATA_DIR}/vaultwarden:/data/
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vaultwarden.rule=Host(`${VAULTWARDEN_HOSTNAME?}`)"
+      - "traefik.http.routers.vaultwarden.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=Vaultwarden"
+      - "flame.url=https://${VAULTWARDEN_HOSTNAME?}"
 
 # Cinny is a Matrix client that will allow you to chat with others. It's a great alternative to Element.
-#   cinny:
-#     image: ajbura/cinny:latest
-#     container_name: cinny
-#     restart: unless-stopped
-#     volumes:
-#       - ./data/cinny/config.json:/app/dist/config.json
-#       - ./data/cinny/config.json:/app/config.json
-#     labels:
-#       - "traefik.enable=true"
-#       - "traefik.http.routers.cinny.rule=Host(`${CINNY_HOSTNAME}`)"
-#       - "traefik.http.routers.cinny.entrypoints=websecure"
-#       - "traefik.http.routers.cinny.tls.certresolver=myresolver"
-#       - "flame.type=app"
-#       - "flame.name=Cinny"
-#       - "flame.url=https://${CINNY_HOSTNAME?}"
+  cinny:
+    image: ajbura/cinny:latest
+    container_name: cinny
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/cinny/config.json:/app/dist/config.json
+      - ${DOCKER_DATA_DIR}/cinny/config.json:/app/config.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cinny.rule=Host(`${CINNY_HOSTNAME}`)"
+      - "traefik.http.routers.cinny.entrypoints=websecure"
+      - "traefik.http.routers.cinny.tls.certresolver=myresolver"
+      - "flame.type=app"
+      - "flame.name=Cinny"
+      - "flame.url=https://${CINNY_HOSTNAME?}"
+
+  cobalt:
+    image: ghcr.io/imputnet/cobalt:11
+    init: true
+    read_only: true
+    restart: unless-stopped
+    container_name: cobalt
+    ports:
+        - 127.0.0.1:9000:9000
+    environment:
+    #Current Container does not have frontend, so using frontend URL for API until frontend is back
+        - API_URL=${COBALT_HOSTNAME}
+        - COOKIE_PATH="/cookies.json"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cobalt.rule=Host(`${COBALT_HOSTNAME}`)"
+      - "traefik.http.routers.cobalt.entrypoints=websecure"
+      - "traefik.http.routers.cobalt.tls.certresolver=myresolver"
+      #- "traefik.http.routers.cobalt.middlewares=authelia@docker"
+      # #API Labels
+      # - "traefik.http.routers.cobaltapi.rule=Host(`${COBALT_API}`)"
+      # - "traefik.http.routers.cobaltapi.entrypoints=websecure"
+      # - "traefik.http.routers.cobaltapi.tls.certresolver=myresolver"
+    volumes:
+      - ${DOCKER_DATA_DIR}/cobalt/cookies.json:/cookies.json
+
+  nitter:
+    image: zedeus/nitter:latest-arm64
+    container_name: nitter
+    ports:
+      - "127.0.0.1:8080:8080" # Replace with "8080:8080" if you don't use a reverse proxy
+    volumes:
+      - ${DOCKER_DATA_DIR}/nitter/nitter.conf:/src/nitter.conf:Z,ro #- ./nitter.conf:/src/nitter.conf:Z,ro
+      - ${DOCKER_DATA_DIR}/nitter/sessions.jsonl:/src/sessions.jsonl:Z,ro #- ./sessions.jsonl:/src/sessions.jsonl:Z,ro # Run get_sessions.py to get the credentials
+    depends_on:
+      - nitter-redis
+    restart: unless-stopped
+    healthcheck:
+      test: wget -nv --tries=1 --spider http://127.0.0.1:8080/Jack/status/20 || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 2
+    user: "998:998"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nitter.rule=Host(`${NITTER_HOSTNAME}`)"
+      - "traefik.http.routers.nitter.entrypoints=websecure"
+      - "traefik.http.routers.nitter.tls.certresolver=myresolver"
+      - "traefik.http.routers.nitter.middlewares=authelia@docker"
+
+  nitter-redis:
+    image: redis:alpine
+    container_name: nitter-redis
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - ${DOCKER_DATA_DIR}/nitter/cache:/data
+    restart: unless-stopped
+    healthcheck:
+      test: redis-cli ping
+      interval: 30s
+      timeout: 5s
+      retries: 2
+    user: "999:1000"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  yamtrack:
+    image: ghcr.io/fuzzygrim/yamtrack
+    container_name: yamtrack
+    restart: unless-stopped
+    expose:
+      - 8000
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.yamtrack.rule=Host(`${YAMTRACK_HOSTNAME?}`)"
+      - "traefik.http.routers.yamtrack.entrypoints=websecure"
+      - "traefik.http.routers.yamtrack.tls.certresolver=myresolver"
+      - "traefik.http.routers.yamtrack.middlewares=authelia@docker"
+    volumes:
+      - ${DOCKER_DATA_DIR}/yamtrack/db:/yamtrack/db
+    depends_on:
+      - yamtrack_redis
+
+  yamtrack_redis:
+    image: redis:alpine
+    container_name: yamtrack-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ${DOCKER_DATA_DIR}/yamtrack/cache:/data
+  
+  redlib:
+    image: quay.io/redlib/redlib:latest
+    restart: unless-stopped
+    container_name: "redlib"
+    expose:
+      - 8080 # Specify `127.0.0.1:8080:8080` instead if using a reverse proxy
+    user: nobody
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+      # - seccomp=seccomp-redlib.json
+    cap_drop:
+      - ALL
+    env_file: .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.redlib.rule=Host(`${REDLIB_HOSTNAME?}`)"
+      - "traefik.http.routers.redlib.entrypoints=websecure"
+      - "traefik.http.routers.redlib.tls.certresolver=myresolver"
+      - "traefik.http.routers.redlib.middlewares=authelia@docker"
+      - "traefik.http.services.redlib.loadbalancer.server.port=8080"
+  quetre:
+    build:
+      context: https://github.com/zyachel/quetre.git
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    container_name: quetre
+    expose:
+      - 3000
+    environment:
+      - "NODE_ENV=production"
+      - "PORT=3000"
+      - "CACHE_PERIOD=1h"
+      - "REDIS_URL=redis://redis-quetre:6379" # optional
+      - "REDIS_TTL=3600"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.quetre.rule=Host(`${QUETRE_HOSTNAME?}`)"
+      - "traefik.http.routers.quetre.entrypoints=websecure"
+      - "traefik.http.routers.quetre.tls.certresolver=myresolver"
+      - "traefik.http.routers.quetre.middlewares=authelia@docker"
+      - "traefik.http.services.quetre.loadbalancer.server.port=3000"
+  redis-quetre:
+    image: docker.io/redis:alpine
+    container_name: quetre_redis
+    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_DIR}/quetre/cache:/data
+    command: redis-server --appendonly yes --save 60 1
+  
+  searxng:
+    container_name: searxng
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    expose:
+      - 8080
+    volumes:
+      - ${DOCKER_DATA_DIR}/searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
+      - UWSGI_WORKERS=${SEARXNG_UWSGI_WORKERS:-4}
+      - UWSGI_THREADS=${SEARXNG_UWSGI_THREADS:-4}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.searxng.rule=Host(`${SEARXNG_HOSTNAME}`)"
+      - "traefik.http.routers.searxng.entrypoints=websecure"
+      - "traefik.http.routers.searxng.tls.certresolver=myresolver"
+      - "traefik.http.routers.searxng.middlewares=authelia@docker"
+
+  anonymous-overflow:
+    container_name: anonymous-overflow
+    image: 'ghcr.io/httpjamesm/anonymousoverflow:release'
+    environment:
+      - APP_URL=https://${ANONYMOUS_HOSTNAME?}
+      - JWT_SIGNING_SECRET=${ANONYMOUS_JWT_SIGNING_SECRET?}
+    expose:
+    - 8080
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.anonymous-overflow.rule=Host(`${ANONYMOUS_HOSTNAME}`)"
+      - "traefik.http.routers.anonymous-overflow.entrypoints=websecure"
+      - "traefik.http.routers.anonymous-overflow.tls.certresolver=myresolver"
+      - "traefik.http.routers.anonymous-overflow.middlewares=authelia@docker"
+      - "traefik.http.services.anonymous-overflow.loadbalancer.server.port=8080"
 
 volumes:
   zilean-tmp:
@@ -921,4 +1536,4 @@ volumes:
   postgres-data:
   mongodb-data:
   garnetdata:
-
+  nitter-redis:
